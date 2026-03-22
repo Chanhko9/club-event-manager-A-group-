@@ -47,6 +47,36 @@ app.get("/api/events", async (req, res) => {
   }
 });
 
+app.post("/api/events", async (req, res) => {
+  try {
+    const { title, event_time, location, description } = req.body;
+
+    if (!title || !event_time || !location) {
+      return res.status(400).json({
+        message: "title, event_time, location are required"
+      });
+    }
+
+    const [result] = await pool.query(
+      `
+      INSERT INTO events (title, event_time, location, description)
+      VALUES (?, ?, ?, ?)
+      `,
+      [title, event_time, location, description || null]
+    );
+
+    res.status(201).json({
+      message: "Event created successfully",
+      eventId: result.insertId
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to create event",
+      error: error.message
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
 });

@@ -19,9 +19,75 @@ h1 {
   margin-bottom: 8px;
 }
 
+h2 {
+  margin-top: 0;
+}
+
 .subtitle {
   margin-top: 0;
   color: #666;
+  margin-bottom: 24px;
+}
+
+.form-section,
+.list-section {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.event-form {
+  display: grid;
+  gap: 16px;
+}
+
+.form-group {
+  display: grid;
+  gap: 8px;
+}
+
+.form-group label {
+  font-weight: bold;
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 16px;
+}
+
+button {
+  width: fit-content;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+.form-message {
+  margin-top: 16px;
+  font-weight: bold;
+}
+
+.form-message.success {
+  color: green;
+}
+
+.form-message.error {
+  color: red;
 }
 
 #status {
@@ -35,17 +101,16 @@ h1 {
 }
 
 .event-card {
-  background: white;
+  background: #fff;
   border: 1px solid #ddd;
   border-radius: 12px;
   padding: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.event-card h2 {
+.event-card h3 {
   margin-top: 0;
   margin-bottom: 12px;
-  font-size: 20px;
+  font-size: 22px;
 }
 
 .event-card p {
