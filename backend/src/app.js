@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+<<<<<<< HEAD
 function validateEventPayload(payload) {
   const title = typeof payload.title === "string" ? payload.title.trim() : "";
   const location = typeof payload.location === "string" ? payload.location.trim() : "";
@@ -43,6 +44,8 @@ function validateEventPayload(payload) {
   };
 }
 
+=======
+>>>>>>> 0ecf83c667f318e6897dd2b48d7aff812c3a87a4
 app.get("/", (req, res) => {
   res.send("Backend is running");
 });
@@ -81,6 +84,7 @@ app.get("/api/events", async (req, res) => {
 
 app.post("/api/events", async (req, res) => {
   try {
+<<<<<<< HEAD
     const validation = validateEventPayload(req.body);
 
     if (!validation.isValid) {
@@ -91,12 +95,26 @@ app.post("/api/events", async (req, res) => {
 
     const { title, event_time, location, description } = validation.data;
 
+=======
+    const { title, event_time, location, description } = req.body;
+
+    if (!title || !event_time || !location) {
+      return res.status(400).json({
+        message: "title, event_time, location are required"
+      });
+    }
+
+>>>>>>> 0ecf83c667f318e6897dd2b48d7aff812c3a87a4
     const [result] = await pool.query(
       `
       INSERT INTO events (title, event_time, location, description)
       VALUES (?, ?, ?, ?)
       `,
+<<<<<<< HEAD
       [title, event_time, location, description]
+=======
+      [title, event_time, location, description || null]
+>>>>>>> 0ecf83c667f318e6897dd2b48d7aff812c3a87a4
     );
 
     res.status(201).json({
@@ -111,6 +129,7 @@ app.post("/api/events", async (req, res) => {
   }
 });
 
+<<<<<<< HEAD
 app.put("/api/events/:id", async (req, res) => {
   try {
     const eventId = Number.parseInt(req.params.id, 10);
@@ -159,3 +178,8 @@ app.put("/api/events/:id", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
 });
+=======
+app.listen(PORT, () => {
+  console.log(`Server is running at http://localhost:${PORT}`);
+});
+>>>>>>> 0ecf83c667f318e6897dd2b48d7aff812c3a87a4
