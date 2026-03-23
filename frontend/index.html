@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Club Event Manager</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Club Event Manager</h1>
+    <p class="subtitle">Quản lý sự kiện câu lạc bộ</p>
+
+    <section class="form-section">
+      <h2 id="form-title">Tạo sự kiện mới</h2>
+
+      <form id="event-form" class="event-form">
+        <input type="hidden" id="event-id" name="event-id" />
+
+        <div class="form-group">
+          <label for="title">Tên sự kiện</label>
+          <input type="text" id="title" name="title" placeholder="Nhập tên sự kiện" required />
+        </div>
+
+        <div class="form-group">
+          <label for="event_time">Thời gian</label>
+          <input type="datetime-local" id="event_time" name="event_time" required />
+        </div>
+
+        <div class="form-group">
+          <label for="location">Địa điểm</label>
+          <input type="text" id="location" name="location" placeholder="Nhập địa điểm" required />
+        </div>
+
+        <div class="form-group">
+          <label for="description">Mô tả</label>
+          <textarea id="description" name="description" rows="4" placeholder="Nhập mô tả sự kiện"></textarea>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" id="submit-btn">Tạo sự kiện</button>
+          <button type="button" id="cancel-btn" class="secondary-button hidden">Hủy chỉnh sửa</button>
+        </div>
+      </form>
+
+      <div id="form-message" class="form-message"></div>
+    </section>
+
+    <section class="list-section">
+      <h2>Danh sách sự kiện</h2>
+      <div id="status">Đang tải dữ liệu...</div>
+      <div id="event-list" class="event-list"></div>
+    </section>
+  </div>
+
+  <script src="./js/main.js"></script>
+</body>
+</html>
