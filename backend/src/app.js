@@ -49,11 +49,37 @@ app.get("/api/events", async (req, res) => {
 
 app.post("/api/events", async (req, res) => {
   try {
-    const { title, event_time, location, description } = req.body;
+    const { title, event_time, location, description, email } = req.body;
 
-    if (!title || !event_time || !location) {
+    let errors = {};
+
+    if (!title || title.trim() === "") {
+      errors.title = "Tiêu đề không được để trống";
+    }
+
+    if (!event_time) {
+      errors.event_time = "Thời gian không được để trống";
+    }
+
+    if (!location || location.trim() === "") {
+      errors.location = "Địa điểm không được để trống";
+    }
+
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        errors.email = "Email không hợp lệ";
+      }
+    }
+
+    if (event_time && isNaN(Date.parse(event_time))) {
+      errors.event_time = "Thời gian không hợp lệ";
+    }
+
+    if (Object.keys(errors).length > 0) {
       return res.status(400).json({
-        message: "title, event_time, location are required"
+        message: "Dữ liệu không hợp lệ",
+        errors: errors
       });
     }
 
@@ -66,12 +92,13 @@ app.post("/api/events", async (req, res) => {
     );
 
     res.status(201).json({
-      message: "Event created successfully",
+      message: "Tạo sự kiện thành công",
       eventId: result.insertId
     });
+
   } catch (error) {
     res.status(500).json({
-      message: "Failed to create event",
+      message: "Lỗi server",
       error: error.message
     });
   }
@@ -80,3 +107,4 @@ app.post("/api/events", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
 });
+
