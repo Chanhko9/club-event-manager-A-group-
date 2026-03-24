@@ -1,8 +1,19 @@
+const API_BASE_URL = "http://localhost:5000/api/events";
+
 const statusEl = document.getElementById("status");
 const eventListEl = document.getElementById("event-list");
 const eventFormEl = document.getElementById("event-form");
 const formMessageEl = document.getElementById("form-message");
 const submitBtnEl = document.getElementById("submit-btn");
+const cancelBtnEl = document.getElementById("cancel-btn");
+const formTitleEl = document.getElementById("form-title");
+const eventIdEl = document.getElementById("event-id");
+const titleEl = document.getElementById("title");
+const eventTimeEl = document.getElementById("event_time");
+const locationEl = document.getElementById("location");
+const descriptionEl = document.getElementById("description");
+
+let editingEventId = null;
 
 function formatDate(dateString) {
   const date = new Date(dateString);
@@ -14,9 +25,71 @@ function formatDateTimeForMySQL(datetimeLocalValue) {
   return `${datetimeLocalValue.replace("T", " ")}:00`;
 }
 
+function formatDateTimeForInput(dateString) {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  const timezoneOffset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function showFormMessage(message, type) {
   formMessageEl.textContent = message;
   formMessageEl.className = `form-message ${type}`;
+}
+
+function clearFormMessage() {
+  formMessageEl.textContent = "";
+  formMessageEl.className = "form-message";
+}
+
+function setCreateMode() {
+  editingEventId = null;
+
+  if (eventIdEl) eventIdEl.value = "";
+  if (formTitleEl) formTitleEl.textContent = "Tạo sự kiện mới";
+  if (submitBtnEl) submitBtnEl.textContent = "Tạo sự kiện";
+  if (cancelBtnEl) cancelBtnEl.classList.add("hidden");
+
+  if (eventFormEl) eventFormEl.reset();
+}
+
+function setEditMode(event) {
+  editingEventId = event.id;
+
+  if (eventIdEl) eventIdEl.value = event.id;
+  if (formTitleEl) formTitleEl.textContent = `Chỉnh sửa sự kiện #${event.id}`;
+  if (submitBtnEl) submitBtnEl.textContent = "Lưu cập nhật";
+  if (cancelBtnEl) cancelBtnEl.classList.remove("hidden");
+
+  if (titleEl) titleEl.value = event.title || "";
+  if (eventTimeEl) eventTimeEl.value = formatDateTimeForInput(event.event_time);
+  if (locationEl) locationEl.value = event.location || "";
+  if (descriptionEl) descriptionEl.value = event.description || "";
+
+  showFormMessage(`Đang chỉnh sửa sự kiện: ${event.title}`, "success");
+  if (titleEl) titleEl.focus();
+}
+
+function validateForm({ title, eventTimeInput, location }) {
+  if (!title || !eventTimeInput || !location) {
+    return "Vui lòng nhập đầy đủ các trường bắt buộc.";
+  }
+
+  const parsedDate = new Date(eventTimeInput);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "Thời gian sự kiện không hợp lệ.";
+  }
+
+  return "";
 }
 
 function renderEvents(events) {
@@ -32,10 +105,18 @@ function renderEvents(events) {
     .map(
       (event) => `
         <div class="event-card">
-          <h3>${event.title}</h3>
+          <div class="event-card-header">
+            <h3>${escapeHtml(event.title)}</h3>
+            <button type="button" class="edit-button" data-event-id="${event.id}">
+              Chỉnh sửa
+            </button>
+          </div>
+
+          <p><span class="label">Mã sự kiện:</span> #${event.id}</p>
           <p><span class="label">Thời gian:</span> ${formatDate(event.event_time)}</p>
-          <p><span class="label">Địa điểm:</span> ${event.location}</p>
-          <p><span class="label">Mô tả:</span> ${event.description || "Không có mô tả"}</p>
+          <p><span class="label">Địa điểm:</span> ${escapeHtml(event.location)}</p>
+          <p><span class="label">Mô tả:</span> ${escapeHtml(event.description || "Không có mô tả")}</p>
+          <p><span class="label">Cập nhật lúc:</span> ${formatDate(event.updated_at)}</p>
 
           <a class="register-link" href="./FormDangKy.html?eventId=${event.id}">
             Đăng ký tham gia
@@ -45,71 +126,133 @@ function renderEvents(events) {
     )
     .join("");
 }
+
 async function loadEvents() {
   try {
     statusEl.textContent = "Đang tải dữ liệu...";
 
-    const response = await fetch("http://localhost:5000/api/events");
+    const response = await fetch(API_BASE_URL);
     if (!response.ok) {
       throw new Error("Không lấy được dữ liệu từ server");
     }
 
     const events = await response.json();
     renderEvents(events);
+    return events;
   } catch (error) {
     statusEl.textContent = "Tải dữ liệu thất bại.";
-    eventListEl.innerHTML = `<p>${error.message}</p>`;
+    eventListEl.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
     console.error(error);
+    return [];
   }
+}
+
+async function submitEvent(payload) {
+  const isEditMode = Boolean(editingEventId);
+  const url = isEditMode ? `${API_BASE_URL}/${editingEventId}` : API_BASE_URL;
+  const method = isEditMode ? "PUT" : "POST";
+
+  const response = await fetch(url, {
+    method,
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      result.message || (isEditMode ? "Cập nhật sự kiện thất bại" : "Tạo sự kiện thất bại")
+    );
+  }
+
+  return result;
 }
 
 eventFormEl.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const title = document.getElementById("title").value.trim();
-  const eventTimeInput = document.getElementById("event_time").value;
-  const location = document.getElementById("location").value.trim();
-  const description = document.getElementById("description").value.trim();
+  const title = titleEl.value.trim();
+  const eventTimeInput = eventTimeEl.value;
+  const location = locationEl.value.trim();
+  const description = descriptionEl.value.trim();
 
-  if (!title || !eventTimeInput || !location) {
-    showFormMessage("Vui lòng nhập đầy đủ các trường bắt buộc.", "error");
+  const validationError = validateForm({ title, eventTimeInput, location });
+  if (validationError) {
+    showFormMessage(validationError, "error");
     return;
   }
 
   const event_time = formatDateTimeForMySQL(eventTimeInput);
+  const isEditMode = Boolean(editingEventId);
 
   try {
     submitBtnEl.disabled = true;
-    showFormMessage("Đang tạo sự kiện...", "success");
+    if (cancelBtnEl) cancelBtnEl.disabled = true;
 
-    const response = await fetch("http://localhost:5000/api/events", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        title,
-        event_time,
-        location,
-        description
-      })
+    showFormMessage(
+      isEditMode ? "Đang cập nhật sự kiện..." : "Đang tạo sự kiện...",
+      "success"
+    );
+
+    await submitEvent({
+      title,
+      event_time,
+      location,
+      description
     });
 
-    const result = await response.json();
+    setCreateMode();
+    showFormMessage(
+      isEditMode ? "Cập nhật sự kiện thành công." : "Tạo sự kiện thành công.",
+      "success"
+    );
 
-    if (!response.ok) {
-      throw new Error(result.message || "Tạo sự kiện thất bại");
-    }
-
-    showFormMessage("Tạo sự kiện thành công.", "success");
-    eventFormEl.reset();
     await loadEvents();
   } catch (error) {
     showFormMessage(error.message, "error");
     console.error(error);
   } finally {
     submitBtnEl.disabled = false;
+    if (cancelBtnEl) cancelBtnEl.disabled = false;
   }
 });
 
+if (cancelBtnEl) {
+  cancelBtnEl.addEventListener("click", () => {
+    setCreateMode();
+    clearFormMessage();
+  });
+}
+
+eventListEl.addEventListener("click", async (event) => {
+  const editButton = event.target.closest(".edit-button");
+  if (!editButton) return;
+
+  const eventId = Number.parseInt(editButton.dataset.eventId, 10);
+  if (!Number.isInteger(eventId)) {
+    showFormMessage("Không xác định được sự kiện cần chỉnh sửa.", "error");
+    return;
+  }
+
+  try {
+    const events = await loadEvents();
+    const selectedEvent = events.find((item) => item.id === eventId);
+
+    if (!selectedEvent) {
+      showFormMessage("Sự kiện không tồn tại trong hệ thống.", "error");
+      return;
+    }
+
+    setEditMode(selectedEvent);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (error) {
+    showFormMessage("Không tải được dữ liệu sự kiện để chỉnh sửa.", "error");
+    console.error(error);
+  }
+});
+
+setCreateMode();
 loadEvents();

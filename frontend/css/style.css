@@ -62,6 +62,12 @@ h2 {
   font-size: 16px;
 }
 
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 button {
   width: fit-content;
   padding: 10px 18px;
@@ -77,9 +83,23 @@ button:hover {
   opacity: 0.9;
 }
 
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.secondary-button {
+  background: #64748b;
+}
+
+.edit-button {
+  background: #0f766e;
+}
+
 .form-message {
   margin-top: 16px;
   font-weight: bold;
+  min-height: 24px;
 }
 
 .form-message.success {
@@ -107,9 +127,16 @@ button:hover {
   padding: 16px;
 }
 
-.event-card h3 {
-  margin-top: 0;
+.event-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 12px;
+}
+
+.event-card h3 {
+  margin: 0;
   font-size: 22px;
 }
 
@@ -119,4 +146,20 @@ button:hover {
 
 .label {
   font-weight: bold;
+}
+
+.register-link {
+  display: inline-block;
+  margin-top: 12px;
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.register-link:hover {
+  text-decoration: underline;
+}
+
+.hidden {
+  display: none;
 }
