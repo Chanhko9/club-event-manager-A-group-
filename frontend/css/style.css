@@ -62,15 +62,12 @@ h2 {
   font-size: 16px;
 }
 
-<<<<<<< HEAD
 .form-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
 }
 
-=======
->>>>>>> 0ecf83c667f318e6897dd2b48d7aff812c3a87a4
 button {
   width: fit-content;
   padding: 10px 18px;
@@ -86,7 +83,6 @@ button:hover {
   opacity: 0.9;
 }
 
-<<<<<<< HEAD
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -104,11 +100,6 @@ button:disabled {
   margin-top: 16px;
   font-weight: bold;
   min-height: 24px;
-=======
-.form-message {
-  margin-top: 16px;
-  font-weight: bold;
->>>>>>> 0ecf83c667f318e6897dd2b48d7aff812c3a87a4
 }
 
 .form-message.success {
@@ -136,7 +127,6 @@ button:disabled {
   padding: 16px;
 }
 
-<<<<<<< HEAD
 .event-card-header {
   display: flex;
   align-items: center;
@@ -147,11 +137,6 @@ button:disabled {
 
 .event-card h3 {
   margin: 0;
-=======
-.event-card h3 {
-  margin-top: 0;
-  margin-bottom: 12px;
->>>>>>> 0ecf83c667f318e6897dd2b48d7aff812c3a87a4
   font-size: 22px;
 }
 
@@ -161,12 +146,20 @@ button:disabled {
 
 .label {
   font-weight: bold;
-<<<<<<< HEAD
+}
+
+.register-link {
+  display: inline-block;
+  margin-top: 12px;
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.register-link:hover {
+  text-decoration: underline;
 }
 
 .hidden {
   display: none;
 }
-=======
-}
->>>>>>> 0ecf83c667f318e6897dd2b48d7aff812c3a87a4
