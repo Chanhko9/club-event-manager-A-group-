@@ -62,6 +62,15 @@ h2 {
   font-size: 16px;
 }
 
+<<<<<<< HEAD
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+=======
+>>>>>>> 0ecf83c667f318e6897dd2b48d7aff812c3a87a4
 button {
   width: fit-content;
   padding: 10px 18px;
@@ -77,9 +86,29 @@ button:hover {
   opacity: 0.9;
 }
 
+<<<<<<< HEAD
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.secondary-button {
+  background: #64748b;
+}
+
+.edit-button {
+  background: #0f766e;
+}
+
 .form-message {
   margin-top: 16px;
   font-weight: bold;
+  min-height: 24px;
+=======
+.form-message {
+  margin-top: 16px;
+  font-weight: bold;
+>>>>>>> 0ecf83c667f318e6897dd2b48d7aff812c3a87a4
 }
 
 .form-message.success {
@@ -107,9 +136,22 @@ button:hover {
   padding: 16px;
 }
 
+<<<<<<< HEAD
+.event-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.event-card h3 {
+  margin: 0;
+=======
 .event-card h3 {
   margin-top: 0;
   margin-bottom: 12px;
+>>>>>>> 0ecf83c667f318e6897dd2b48d7aff812c3a87a4
   font-size: 22px;
 }
 
@@ -119,4 +161,12 @@ button:hover {
 
 .label {
   font-weight: bold;
+<<<<<<< HEAD
 }
+
+.hidden {
+  display: none;
+}
+=======
+}
+>>>>>>> 0ecf83c667f318e6897dd2b48d7aff812c3a87a4
