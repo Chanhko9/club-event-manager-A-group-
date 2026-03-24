@@ -86,7 +86,8 @@ ALTER TABLE `events`
 --
 ALTER TABLE `registrations`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uq_event_student` (`event_id`,`student_id`);
+  ADD UNIQUE KEY `uq_event_student` (`event_id`,`student_id`),
+  ADD UNIQUE KEY `uq_event_email` (`event_id`,`email`);
 
 --
 -- AUTO_INCREMENT for dumped tables
