@@ -21,5 +21,6 @@ CREATE TABLE IF NOT EXISTS registrations (
     CONSTRAINT fk_registrations_event
         FOREIGN KEY (event_id) REFERENCES events(id)
         ON DELETE CASCADE,
-    CONSTRAINT uq_event_student UNIQUE (event_id, student_id)
+    CONSTRAINT uq_event_student UNIQUE (event_id, student_id),
+    CONSTRAINT uq_event_email UNIQUE (event_id, email)
 );
