@@ -36,12 +36,15 @@ function renderEvents(events) {
           <p><span class="label">Thời gian:</span> ${formatDate(event.event_time)}</p>
           <p><span class="label">Địa điểm:</span> ${event.location}</p>
           <p><span class="label">Mô tả:</span> ${event.description || "Không có mô tả"}</p>
+
+          <a class="register-link" href="./FormDangKy.html?eventId=${event.id}">
+            Đăng ký tham gia
+          </a>
         </div>
       `
     )
     .join("");
 }
-
 async function loadEvents() {
   try {
     statusEl.textContent = "Đang tải dữ liệu...";

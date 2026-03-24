@@ -28,7 +28,7 @@
           </div>
           <div class="highlight-item">
             <span class="highlight-label">Địa điểm</span>
-            <strong>Hội trường A - Khu B</strong>
+            <strong>Toà B - Hội trường B</strong>
           </div>
         </div>
       </div>
@@ -53,12 +53,10 @@
         <div class="form-grid two-columns">
           <div class="form-group full-width">
             <label for="event_name">Chọn sự kiện <span class="required">*</span></label>
-            <select id="event_name" name="event_name" required>
+           <select id="event_id" name="event_id" required>
               <option value="">-- Chọn sự kiện muốn tham gia --</option>
-              <option>Workshop Kỹ năng lãnh đạo CLB 2026</option>
-              <option>Ngày hội kết nối tân sinh viên</option>
-              <option>Talkshow Phát triển kỹ năng mềm</option>
             </select>
+            <div id="selected-event-info" class="selected-event-info"></div>
             <small>Chọn đúng sự kiện để hệ thống ghi nhận đăng ký chính xác.</small>
           </div>
 
@@ -126,5 +124,6 @@
       </form>
     </section>
   </main>
+  <script src="./js/form-dang-ky.js"></script>
 </body>
 </html>
