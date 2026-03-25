@@ -1,4 +1,15 @@
-const API_BASE_URL = "http://localhost:5000/api/events";
+function getApiBaseUrl() {
+  const isLocalBrowserHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  const isBackendOrigin = isLocalBrowserHost && window.location.port === "5000";
+
+  if (window.location.protocol === "file:" || (isLocalBrowserHost && !isBackendOrigin)) {
+    return "http://localhost:5000/api";
+  }
+
+  return `${window.location.origin}/api`;
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 const statusEl = document.getElementById("status");
 const eventListEl = document.getElementById("event-list");
@@ -39,6 +50,17 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+async function readJsonSafely(response) {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return null;
+  }
 }
 
 function showFormMessage(message, type) {
@@ -116,11 +138,17 @@ function renderEvents(events) {
           <p><span class="label">Thời gian:</span> ${formatDate(event.event_time)}</p>
           <p><span class="label">Địa điểm:</span> ${escapeHtml(event.location)}</p>
           <p><span class="label">Mô tả:</span> ${escapeHtml(event.description || "Không có mô tả")}</p>
+          <p><span class="label">Số người đăng ký:</span> ${Number(event.registration_count || 0)} người</p>
           <p><span class="label">Cập nhật lúc:</span> ${formatDate(event.updated_at)}</p>
 
-          <a class="register-link" href="./FormDangKy.html?eventId=${event.id}">
-            Đăng ký tham gia
-          </a>
+          <div class="event-card-actions">
+            <a class="register-link" href="./FormDangKy.html?eventId=${event.id}">
+              Đăng ký tham gia
+            </a>
+            <a class="register-link secondary-link" href="./DanhSachDangKy.html?eventId=${event.id}">
+              Xem người đăng ký
+            </a>
+          </div>
         </div>
       `
     )
@@ -131,12 +159,14 @@ async function loadEvents() {
   try {
     statusEl.textContent = "Đang tải dữ liệu...";
 
-    const response = await fetch(API_BASE_URL);
+    const response = await fetch(`${API_BASE_URL}/events`);
+    const result = await readJsonSafely(response);
+
     if (!response.ok) {
-      throw new Error("Không lấy được dữ liệu từ server");
+      throw new Error(result?.message || "Không lấy được dữ liệu từ server");
     }
 
-    const events = await response.json();
+    const events = Array.isArray(result) ? result : [];
     renderEvents(events);
     return events;
   } catch (error) {
@@ -149,23 +179,19 @@ async function loadEvents() {
 
 async function submitEvent(payload) {
   const isEditMode = Boolean(editingEventId);
-  const url = isEditMode ? `${API_BASE_URL}/${editingEventId}` : API_BASE_URL;
+  const url = isEditMode ? `${API_BASE_URL}/events/${editingEventId}` : `${API_BASE_URL}/events`;
   const method = isEditMode ? "PUT" : "POST";
 
   const response = await fetch(url, {
     method,
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
 
-  const result = await response.json();
+  const result = await readJsonSafely(response);
 
   if (!response.ok) {
-    throw new Error(
-      result.message || (isEditMode ? "Cập nhật sự kiện thất bại" : "Tạo sự kiện thất bại")
-    );
+    throw new Error(result?.message || (isEditMode ? "Cập nhật sự kiện thất bại" : "Tạo sự kiện thất bại"));
   }
 
   return result;
@@ -192,23 +218,12 @@ eventFormEl.addEventListener("submit", async (e) => {
     submitBtnEl.disabled = true;
     if (cancelBtnEl) cancelBtnEl.disabled = true;
 
-    showFormMessage(
-      isEditMode ? "Đang cập nhật sự kiện..." : "Đang tạo sự kiện...",
-      "success"
-    );
+    showFormMessage(isEditMode ? "Đang cập nhật sự kiện..." : "Đang tạo sự kiện...", "success");
 
-    await submitEvent({
-      title,
-      event_time,
-      location,
-      description
-    });
+    await submitEvent({ title, event_time, location, description });
 
     setCreateMode();
-    showFormMessage(
-      isEditMode ? "Cập nhật sự kiện thành công." : "Tạo sự kiện thành công.",
-      "success"
-    );
+    showFormMessage(isEditMode ? "Cập nhật sự kiện thành công." : "Tạo sự kiện thành công.", "success");
 
     await loadEvents();
   } catch (error) {

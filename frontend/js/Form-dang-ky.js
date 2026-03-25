@@ -1,4 +1,15 @@
-const API_BASE_URL = "http://localhost:5000/api";
+function getApiBaseUrl() {
+  const isLocalBrowserHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  const isBackendOrigin = isLocalBrowserHost && window.location.port === "5000";
+
+  if (window.location.protocol === "file:" || (isLocalBrowserHost && !isBackendOrigin)) {
+    return "http://localhost:5000/api";
+  }
+
+  return `${window.location.origin}/api`;
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 const registrationFormEl = document.querySelector(".student-form");
 const eventSelectEl = document.getElementById("event_id");
@@ -20,6 +31,17 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+async function readJsonSafely(response) {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return null;
+  }
 }
 
 function getEventIdFromUrl() {
@@ -60,17 +82,17 @@ function renderSelectedEventInfo(eventId) {
 async function loadEventsForRegistration() {
   try {
     const response = await fetch(`${API_BASE_URL}/events`);
+    const events = await readJsonSafely(response);
 
     if (!response.ok) {
-      throw new Error("Không tải được danh sách sự kiện");
+      throw new Error(events?.message || "Không tải được danh sách sự kiện");
     }
 
-    const events = await response.json();
-    eventsData = events;
+    eventsData = Array.isArray(events) ? events : [];
 
     eventSelectEl.innerHTML = `
       <option value="">-- Chọn sự kiện muốn tham gia --</option>
-      ${events
+      ${eventsData
         .map(
           (event) => `
             <option value="${event.id}">
@@ -102,10 +124,10 @@ async function submitRegistration(payload) {
     body: JSON.stringify(payload)
   });
 
-  const result = await response.json();
+  const result = await readJsonSafely(response);
 
   if (!response.ok) {
-    const error = new Error(result.message || "Đăng ký thất bại");
+    const error = new Error(result?.message || "Đăng ký thất bại");
     error.status = response.status;
     error.payload = result;
     throw error;

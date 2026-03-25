@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Danh sách người đăng ký</title>
+  <link rel="stylesheet" href="./css/DanhSachDangKy.css" />
+</head>
+<body>
+  <main class="page-shell">
+    <section class="hero-card">
+      <div class="hero-content">
+        <p class="hero-badge">Club Event Manager</p>
+        <h1>Danh sách người đăng ký sự kiện</h1>
+        <p class="hero-text">
+          Theo dõi số lượng người tham gia, xem nhanh thông tin cơ bản của từng lượt đăng ký
+          và chuyển đổi giữa các sự kiện ngay trên cùng một màn hình quản trị.
+        </p>
+
+        <div class="stat-grid">
+          <div class="stat-card">
+            <span class="stat-label">Sự kiện đang xem</span>
+            <strong id="hero-event-title">Chưa chọn sự kiện</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Số người đăng ký</span>
+            <strong id="hero-registration-count">0 người</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Trạng thái</span>
+            <strong id="hero-registration-status">Đang chờ tải dữ liệu</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-card">
+      <div class="form-header">
+        <div>
+          <p class="section-tag">Quản trị đăng ký</p>
+          <h2>Tra cứu danh sách người tham gia</h2>
+          <p class="section-text">
+            Chọn đúng sự kiện để xem danh sách đã đăng ký. Dữ liệu được liên kết trực tiếp
+            với sự kiện đang chọn trong hệ thống.
+          </p>
+        </div>
+        <div class="top-actions">
+          <a class="secondary-btn" href="./TaoSuKien.html">Quay lại quản lý sự kiện</a>
+          <a id="registration-form-link" class="primary-btn" href="./FormDangKy.html">Mở form đăng ký</a>
+        </div>
+      </div>
+
+      <div id="page-message" class="form-message" aria-live="polite"></div>
+
+      <div class="filter-panel">
+        <div class="form-group">
+          <label for="event-selector">Chọn sự kiện</label>
+          <select id="event-selector"></select>
+          <small>Danh sách sẽ tự động cập nhật theo sự kiện được chọn.</small>
+        </div>
+      </div>
+
+      <div id="selected-event-info" class="event-preview-card empty-card">
+        Chưa có sự kiện nào để hiển thị.
+      </div>
+
+      <div class="section-divider">
+        <span>Danh sách người đăng ký</span>
+      </div>
+
+      <div class="table-meta">
+        <p id="registration-status" class="list-status">Đang tải dữ liệu...</p>
+      </div>
+
+      <div id="empty-state" class="empty-state hidden">
+        <h3>Chưa có người đăng ký</h3>
+        <p>Sự kiện này chưa có bản ghi đăng ký nào được lưu trong hệ thống.</p>
+      </div>
+
+      <div id="table-wrapper" class="table-wrapper hidden">
+        <table class="registration-table">
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th>Họ và tên</th>
+              <th>MSSV</th>
+              <th>Email</th>
+              <th>Số điện thoại</th>
+              <th>Thời gian đăng ký</th>
+            </tr>
+          </thead>
+          <tbody id="registration-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="./js/DanhSachDangKy.js"></script>
+</body>
+</html>

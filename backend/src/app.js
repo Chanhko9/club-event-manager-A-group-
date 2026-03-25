@@ -1,12 +1,15 @@
+const path = require("node:path");
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
-const pool = require("./config/db");
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
+
+const pool = require("./config/db");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const frontendDir = path.resolve(__dirname, "../../frontend");
 
 app.use(cors());
 app.use(express.json());
@@ -21,6 +24,11 @@ function normalizeEmail(value) {
 
 function normalizeStudentId(value) {
   return normalizeText(value).toUpperCase();
+}
+
+function parsePositiveInteger(value) {
+  const parsedValue = Number.parseInt(value, 10);
+  return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null;
 }
 
 function validateEventPayload(payload) {
@@ -56,13 +64,13 @@ function validateEventPayload(payload) {
 }
 
 function validateRegistrationPayload(payload) {
-  const eventId = Number.parseInt(payload.event_id, 10);
+  const eventId = parsePositiveInteger(payload.event_id);
   const fullName = normalizeText(payload.full_name);
   const studentId = normalizeStudentId(payload.student_id);
   const email = normalizeEmail(payload.email);
   const phone = normalizeText(payload.phone);
 
-  if (!Number.isInteger(eventId) || eventId <= 0) {
+  if (!eventId) {
     return {
       isValid: false,
       message: "event_id is invalid"
@@ -99,7 +107,7 @@ function validateRegistrationPayload(payload) {
 async function findEventById(eventId) {
   const [rows] = await pool.query(
     `
-      SELECT id, title, event_time, location, description
+      SELECT id, title, event_time, location, description, created_at, updated_at
       FROM events
       WHERE id = ?
       LIMIT 1
@@ -135,6 +143,20 @@ async function findDuplicateRegistration({ event_id, student_id, email }) {
   };
 }
 
+async function findRegistrationsByEventId(eventId) {
+  const [rows] = await pool.query(
+    `
+      SELECT id, event_id, full_name, student_id, email, phone, created_at
+      FROM registrations
+      WHERE event_id = ?
+      ORDER BY created_at DESC, id DESC
+    `,
+    [eventId]
+  );
+
+  return rows;
+}
+
 function getDuplicateRegistrationMessage(duplicatedBy) {
   if (duplicatedBy === "email") {
     return "Sinh viên đã đăng ký sự kiện này bằng email này rồi.";
@@ -142,10 +164,6 @@ function getDuplicateRegistrationMessage(duplicatedBy) {
 
   return "Sinh viên đã đăng ký sự kiện này bằng MSSV này rồi.";
 }
-
-app.get("/", (req, res) => {
-  res.send("Backend is running");
-});
 
 app.get("/api/health", async (req, res) => {
   try {
@@ -165,15 +183,87 @@ app.get("/api/health", async (req, res) => {
 app.get("/api/events", async (req, res) => {
   try {
     const [rows] = await pool.query(`
-      SELECT id, title, event_time, location, description, created_at, updated_at
-      FROM events
-      ORDER BY event_time ASC
+      SELECT
+        e.id,
+        e.title,
+        e.event_time,
+        e.location,
+        e.description,
+        e.created_at,
+        e.updated_at,
+        (
+          SELECT COUNT(*)
+          FROM registrations r
+          WHERE r.event_id = e.id
+        ) AS registration_count
+      FROM events e
+      ORDER BY e.event_time ASC
     `);
 
     res.json(rows);
   } catch (error) {
     res.status(500).json({
       message: "Failed to fetch events",
+      error: error.message
+    });
+  }
+});
+
+app.get("/api/events/:id", async (req, res) => {
+  try {
+    const eventId = parsePositiveInteger(req.params.id);
+
+    if (!eventId) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    const event = await findEventById(eventId);
+
+    if (!event) {
+      return res.status(404).json({
+        message: "Event not found"
+      });
+    }
+
+    return res.json(event);
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to fetch event",
+      error: error.message
+    });
+  }
+});
+
+app.get("/api/events/:id/registrations", async (req, res) => {
+  try {
+    const eventId = parsePositiveInteger(req.params.id);
+
+    if (!eventId) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    const event = await findEventById(eventId);
+
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    const registrations = await findRegistrationsByEventId(eventId);
+
+    return res.json({
+      event,
+      totalRegistrations: registrations.length,
+      registrations
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể tải danh sách người đăng ký",
       error: error.message
     });
   }
@@ -213,9 +303,9 @@ app.post("/api/events", async (req, res) => {
 
 app.put("/api/events/:id", async (req, res) => {
   try {
-    const eventId = Number.parseInt(req.params.id, 10);
+    const eventId = parsePositiveInteger(req.params.id);
 
-    if (!Number.isInteger(eventId) || eventId <= 0) {
+    if (!eventId) {
       return res.status(400).json({
         message: "Event id is invalid"
       });
@@ -324,6 +414,17 @@ app.post("/api/registrations", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running at http://localhost:${PORT}`);
+app.use(express.static(frontendDir));
+
+app.get("/", (req, res) => {
+  res.redirect("/TaoSuKien.html");
 });
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server is running at http://localhost:${PORT}`);
+    console.log(`Frontend: http://localhost:${PORT}/TaoSuKien.html`);
+  });
+}
+
+module.exports = app;
