@@ -10,7 +10,7 @@ body {
 }
 
 .container {
-  max-width: 900px;
+  max-width: 1100px;
   margin: 40px auto;
   padding: 0 16px;
 }
@@ -39,6 +39,18 @@ h2 {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
+.list-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-note {
+  margin: 6px 0 0;
+  color: #64748b;
+}
+
 .event-form {
   display: grid;
   gap: 16px;
@@ -62,7 +74,8 @@ h2 {
   font-size: 16px;
 }
 
-.form-actions {
+.form-actions,
+.event-card-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -80,7 +93,7 @@ button {
 }
 
 button:hover {
-  opacity: 0.9;
+  opacity: 0.92;
 }
 
 button:disabled {
@@ -94,6 +107,10 @@ button:disabled {
 
 .edit-button {
   background: #0f766e;
+}
+
+.export-button {
+  background: #7c3aed;
 }
 
 .form-message {
@@ -149,17 +166,82 @@ button:disabled {
 }
 
 .register-link {
-  display: inline-block;
-  margin-top: 12px;
-  color: #2563eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  color: white;
+  background: #2563eb;
   text-decoration: none;
   font-weight: bold;
 }
 
 .register-link:hover {
-  text-decoration: underline;
+  opacity: 0.92;
+}
+
+.registration-panel {
+  margin-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 16px;
+}
+
+.registration-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.registration-hint {
+  margin: 0;
+  color: #475569;
+}
+
+.registration-error {
+  margin: 0;
+  color: #dc2626;
+  font-weight: bold;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.registration-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.registration-table th,
+.registration-table td {
+  border: 1px solid #dbe4f0;
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.registration-table thead th {
+  background: #eff6ff;
+}
+
+.empty-cell {
+  text-align: center;
+  color: #64748b;
+  font-style: italic;
 }
 
 .hidden {
   display: none;
+}
+
+@media (max-width: 768px) {
+  .event-card-header,
+  .registration-panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
