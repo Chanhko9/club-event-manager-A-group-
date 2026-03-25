@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const ExcelJS = require("exceljs");
 const pool = require("./config/db");
 
 dotenv.config();
@@ -96,10 +97,26 @@ function validateRegistrationPayload(payload) {
   };
 }
 
+function escapeFileName(value) {
+  return String(value ?? "su-kien")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase() || "su-kien";
+}
+
+function formatDateForFile(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}${month}${day}`;
+}
+
 async function findEventById(eventId) {
   const [rows] = await pool.query(
     `
-      SELECT id, title, event_time, location, description
+      SELECT id, title, event_time, location, description, created_at, updated_at
       FROM events
       WHERE id = ?
       LIMIT 1
@@ -143,6 +160,239 @@ function getDuplicateRegistrationMessage(duplicatedBy) {
   return "Sinh viên đã đăng ký sự kiện này bằng MSSV này rồi.";
 }
 
+async function getRegistrationsByEventId(eventId) {
+  const [rows] = await pool.query(
+    `
+      SELECT
+        id,
+        event_id,
+        full_name,
+        student_id,
+        email,
+        phone,
+        created_at
+      FROM registrations
+      WHERE event_id = ?
+      ORDER BY created_at ASC, id ASC
+    `,
+    [eventId]
+  );
+
+  return rows;
+}
+
+async function buildRegistrationWorkbook(event, registrations) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Club Event Manager";
+  workbook.lastModifiedBy = "Club Event Manager";
+  workbook.created = new Date();
+  workbook.modified = new Date();
+
+  const sheet = workbook.addWorksheet("Danh sach dang ky", {
+    views: [{ state: "frozen", ySplit: 6 }]
+  });
+
+  const headerRowIndex = 7;
+  const widthPaddingPx = 20;
+  const widthPaddingChars = Math.max(3, Math.ceil(widthPaddingPx / 7));
+  const columns = [
+    { header: "STT", key: "stt", minWidth: 8, maxWidth: 14 },
+    { header: "Mã đăng ký", key: "registration_id", minWidth: 14, maxWidth: 22 },
+    { header: "Họ tên", key: "full_name", minWidth: 22, maxWidth: 42 },
+    { header: "MSSV", key: "student_id", minWidth: 14, maxWidth: 20 },
+    { header: "Email", key: "email", minWidth: 24, maxWidth: 40 },
+    { header: "Số điện thoại", key: "phone", minWidth: 16, maxWidth: 24 },
+    { header: "Thời gian đăng ký", key: "created_at", minWidth: 22, maxWidth: 28 }
+  ];
+
+  const formatDateTimeText = (value) => {
+    if (!value) {
+      return "";
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = date.getFullYear();
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+
+    return `${day}/${month}/${year} ${hours}:${minutes}`;
+  };
+
+  const getDisplayText = (value) => {
+    if (value == null) {
+      return "";
+    }
+
+    if (value instanceof Date) {
+      return formatDateTimeText(value);
+    }
+
+    if (typeof value === "object") {
+      if (Array.isArray(value.richText)) {
+        return value.richText.map((part) => part.text || "").join("");
+      }
+
+      if (typeof value.text === "string") {
+        return value.text;
+      }
+
+      if (value.hyperlink && value.text) {
+        return String(value.text);
+      }
+
+      if (value.result != null) {
+        return String(value.result);
+      }
+    }
+
+    return String(value);
+  };
+
+  const applyAutoWidths = (worksheet, columnConfig) => {
+    columnConfig.forEach((column, index) => {
+      const columnNumber = index + 1;
+      let longest = column.minWidth;
+
+      worksheet.eachRow({ includeEmpty: true }, (row) => {
+        const cellText = getDisplayText(row.getCell(columnNumber).value);
+        const lines = cellText.split(/\r?\n/);
+        const longestLine = lines.reduce((max, line) => Math.max(max, line.length), 0);
+        longest = Math.max(longest, longestLine + widthPaddingChars);
+      });
+
+      worksheet.getColumn(columnNumber).width = Math.min(longest, column.maxWidth);
+    });
+  };
+
+  sheet.columns = columns.map((column) => ({
+    header: column.header,
+    key: column.key,
+    width: column.minWidth
+  }));
+
+  sheet.mergeCells("A1:G1");
+  sheet.getCell("A1").value = `DANH SÁCH ĐĂNG KÝ - ${event.title}`;
+  sheet.getCell("A1").font = { size: 16, bold: true };
+  sheet.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+
+  sheet.getCell("A2").value = "Mã sự kiện";
+  sheet.getCell("B2").value = String(event.id ?? "");
+  sheet.getCell("A3").value = "Thời gian sự kiện";
+  sheet.getCell("B3").value = formatDateTimeText(event.event_time);
+  sheet.getCell("A4").value = "Địa điểm";
+  sheet.getCell("B4").value = event.location || "";
+  sheet.getCell("A5").value = "Tổng số đăng ký";
+  sheet.getCell("B5").value = String(registrations.length);
+
+  for (const cell of ["A2", "A3", "A4", "A5"]) {
+    sheet.getCell(cell).font = { bold: true };
+  }
+
+  const headerRow = sheet.getRow(headerRowIndex);
+  headerRow.values = columns.map((column) => column.header);
+  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  headerRow.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+  headerRow.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF1F4E78" }
+  };
+  headerRow.height = 22;
+
+  registrations.forEach((registration, index) => {
+    sheet.addRow({
+      stt: index + 1,
+      registration_id: registration.id,
+      full_name: registration.full_name,
+      student_id: registration.student_id,
+      email: registration.email,
+      phone: registration.phone || "",
+      created_at: formatDateTimeText(registration.created_at)
+    });
+  });
+
+  if (registrations.length === 0) {
+    const emptyRow = sheet.addRow({
+      stt: "",
+      registration_id: "",
+      full_name: "Chưa có người đăng ký",
+      student_id: "",
+      email: "",
+      phone: "",
+      created_at: ""
+    });
+    emptyRow.font = { italic: true, color: { argb: "FF666666" } };
+  }
+
+  const firstTableRow = headerRowIndex;
+  const lastTableRow = sheet.rowCount;
+
+  for (let rowNumber = firstTableRow; rowNumber <= lastTableRow; rowNumber += 1) {
+    for (let colNumber = 1; colNumber <= 7; colNumber += 1) {
+      const cell = sheet.getRow(rowNumber).getCell(colNumber);
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFD9E2F3" } },
+        left: { style: "thin", color: { argb: "FFD9E2F3" } },
+        bottom: { style: "thin", color: { argb: "FFD9E2F3" } },
+        right: { style: "thin", color: { argb: "FFD9E2F3" } }
+      };
+      cell.alignment = {
+        vertical: "middle",
+        wrapText: true,
+        horizontal: colNumber === 1 ? "center" : "left"
+      };
+    }
+  }
+
+  for (let rowNumber = headerRowIndex + 1; rowNumber <= lastTableRow; rowNumber += 1) {
+    const row = sheet.getRow(rowNumber);
+    if (rowNumber % 2 === 0) {
+      row.eachCell((cell) => {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFF8FBFF" }
+        };
+      });
+    }
+  }
+
+  applyAutoWidths(sheet, columns);
+
+  const metadataColumnAValues = [
+    "Mã sự kiện",
+    "Thời gian sự kiện",
+    "Địa điểm",
+    "Tổng số đăng ký"
+  ];
+  const metadataColumnBValues = [
+    String(event.id ?? ""),
+    formatDateTimeText(event.event_time),
+    String(event.location || ""),
+    String(registrations.length)
+  ];
+
+  const metadataAWidth = metadataColumnAValues.reduce(
+    (max, value) => Math.max(max, value.length + widthPaddingChars),
+    sheet.getColumn(1).width || columns[0].minWidth
+  );
+  const metadataBWidth = metadataColumnBValues.reduce(
+    (max, value) => Math.max(max, value.length + widthPaddingChars),
+    sheet.getColumn(2).width || columns[1].minWidth
+  );
+
+  sheet.getColumn(1).width = Math.min(Math.max(metadataAWidth, 16), 28);
+  sheet.getColumn(2).width = Math.min(Math.max(metadataBWidth, 24), 40);
+
+  return workbook;
+}
+
 app.get("/", (req, res) => {
   res.send("Backend is running");
 });
@@ -174,6 +424,76 @@ app.get("/api/events", async (req, res) => {
   } catch (error) {
     res.status(500).json({
       message: "Failed to fetch events",
+      error: error.message
+    });
+  }
+});
+
+app.get("/api/events/:id/registrations", async (req, res) => {
+  try {
+    const eventId = Number.parseInt(req.params.id, 10);
+
+    if (!Number.isInteger(eventId) || eventId <= 0) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    const registrations = await getRegistrationsByEventId(eventId);
+
+    return res.json({
+      event,
+      registrations,
+      total: registrations.length
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể lấy danh sách đăng ký",
+      error: error.message
+    });
+  }
+});
+
+app.get("/api/events/:id/registrations/export", async (req, res) => {
+  try {
+    const eventId = Number.parseInt(req.params.id, 10);
+
+    if (!Number.isInteger(eventId) || eventId <= 0) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    const registrations = await getRegistrationsByEventId(eventId);
+    const workbook = await buildRegistrationWorkbook(event, registrations);
+    const safeTitle = escapeFileName(event.title);
+    const fileName = `dang-ky-${safeTitle}-${formatDateForFile()}.xlsx`;
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+
+    await workbook.xlsx.write(res);
+    return res.end();
+  } catch (error) {
+    return res.status(500).json({
+      message: "Xuất file thất bại",
       error: error.message
     });
   }
