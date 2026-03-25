@@ -178,8 +178,14 @@ button:disabled {
   font-weight: bold;
 }
 
-.register-link:hover {
+.secondary-link {
+  background: #0f766e;
+}
+
+.register-link:hover,
+.secondary-link:hover {
   opacity: 0.92;
+  text-decoration: none;
 }
 
 .registration-panel {
@@ -240,7 +246,8 @@ button:disabled {
 
 @media (max-width: 768px) {
   .event-card-header,
-  .registration-panel-header {
+  .registration-panel-header,
+  .list-section-header {
     flex-direction: column;
     align-items: flex-start;
   }

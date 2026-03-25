@@ -1,4 +1,16 @@
-const API_EVENTS_URL = "http://localhost:5000/api/events";
+function getApiBaseUrl() {
+  const isLocalBrowserHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  const isBackendOrigin = isLocalBrowserHost && window.location.port === "5000";
+
+  if (window.location.protocol === "file:" || (isLocalBrowserHost && !isBackendOrigin)) {
+    return "http://localhost:5000/api";
+  }
+
+  return `${window.location.origin}/api`;
+}
+
+const API_BASE_URL = getApiBaseUrl();
+const API_EVENTS_URL = `${API_BASE_URL}/events`;
 
 const statusEl = document.getElementById("status");
 const eventListEl = document.getElementById("event-list");
@@ -43,12 +55,25 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+async function readJsonSafely(response) {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return null;
+  }
+}
+
 function showFormMessage(message, type) {
+  if (!formMessageEl) return;
   formMessageEl.textContent = message;
   formMessageEl.className = `form-message ${type}`;
 }
 
 function clearFormMessage() {
+  if (!formMessageEl) return;
   formMessageEl.textContent = "";
   formMessageEl.className = "form-message";
 }
@@ -177,6 +202,8 @@ function renderRegistrationTable(eventId) {
 }
 
 function renderEvents(events) {
+  if (!statusEl || !eventListEl) return;
+
   if (!events.length) {
     statusEl.textContent = "Chưa có sự kiện nào.";
     eventListEl.innerHTML = "";
@@ -203,6 +230,7 @@ function renderEvents(events) {
           <p><span class="label">Thời gian:</span> ${formatDate(event.event_time)}</p>
           <p><span class="label">Địa điểm:</span> ${escapeHtml(event.location)}</p>
           <p><span class="label">Mô tả:</span> ${escapeHtml(event.description || "Không có mô tả")}</p>
+          <p><span class="label">Số người đăng ký:</span> ${Number(event.registration_count || 0)} người</p>
           <p><span class="label">Cập nhật lúc:</span> ${formatDate(event.updated_at)}</p>
 
           <div class="event-card-actions">
@@ -226,20 +254,24 @@ function renderEvents(events) {
 
 async function loadEvents() {
   try {
-    statusEl.textContent = "Đang tải dữ liệu...";
+    if (statusEl) statusEl.textContent = "Đang tải dữ liệu...";
 
     const response = await fetch(API_EVENTS_URL);
+    const result = await readJsonSafely(response);
+
     if (!response.ok) {
-      throw new Error("Không lấy được dữ liệu từ server");
+      throw new Error(result?.message || "Không lấy được dữ liệu từ server");
     }
 
-    const events = await response.json();
+    const events = Array.isArray(result) ? result : [];
     currentEvents = events;
     renderEvents(events);
     return events;
   } catch (error) {
-    statusEl.textContent = "Tải dữ liệu thất bại.";
-    eventListEl.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+    if (statusEl) statusEl.textContent = "Tải dữ liệu thất bại.";
+    if (eventListEl) {
+      eventListEl.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+    }
     console.error(error);
     return [];
   }
@@ -252,18 +284,14 @@ async function submitEvent(payload) {
 
   const response = await fetch(url, {
     method,
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
 
-  const result = await response.json();
+  const result = await readJsonSafely(response);
 
   if (!response.ok) {
-    throw new Error(
-      result.message || (isEditMode ? "Cập nhật sự kiện thất bại" : "Tạo sự kiện thất bại")
-    );
+    throw new Error(result?.message || (isEditMode ? "Cập nhật sự kiện thất bại" : "Tạo sự kiện thất bại"));
   }
 
   return result;
@@ -271,13 +299,13 @@ async function submitEvent(payload) {
 
 async function loadRegistrations(eventId) {
   const response = await fetch(`${API_EVENTS_URL}/${eventId}/registrations`);
-  const result = await response.json();
+  const result = await readJsonSafely(response);
 
   if (!response.ok) {
-    throw new Error(result.message || "Không thể lấy danh sách đăng ký");
+    throw new Error(result?.message || "Không thể lấy danh sách đăng ký");
   }
 
-  return result;
+  return result || {};
 }
 
 function getFileNameFromDisposition(dispositionHeader) {
@@ -322,54 +350,51 @@ async function exportRegistrations(eventId) {
   return fileName;
 }
 
-eventFormEl.addEventListener("submit", async (e) => {
-  e.preventDefault();
+if (eventFormEl) {
+  eventFormEl.addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-  const title = titleEl.value.trim();
-  const eventTimeInput = eventTimeEl.value;
-  const location = locationEl.value.trim();
-  const description = descriptionEl.value.trim();
+    const title = titleEl.value.trim();
+    const eventTimeInput = eventTimeEl.value;
+    const location = locationEl.value.trim();
+    const description = descriptionEl.value.trim();
 
-  const validationError = validateForm({ title, eventTimeInput, location });
-  if (validationError) {
-    showFormMessage(validationError, "error");
-    return;
-  }
+    const validationError = validateForm({ title, eventTimeInput, location });
+    if (validationError) {
+      showFormMessage(validationError, "error");
+      return;
+    }
 
-  const event_time = formatDateTimeForMySQL(eventTimeInput);
-  const isEditMode = Boolean(editingEventId);
+    const event_time = formatDateTimeForMySQL(eventTimeInput);
+    const isEditMode = Boolean(editingEventId);
 
-  try {
-    submitBtnEl.disabled = true;
-    if (cancelBtnEl) cancelBtnEl.disabled = true;
+    try {
+      if (submitBtnEl) submitBtnEl.disabled = true;
+      if (cancelBtnEl) cancelBtnEl.disabled = true;
 
-    showFormMessage(
-      isEditMode ? "Đang cập nhật sự kiện..." : "Đang tạo sự kiện...",
-      "success"
-    );
+      showFormMessage(
+        isEditMode ? "Đang cập nhật sự kiện..." : "Đang tạo sự kiện...",
+        "success"
+      );
 
-    await submitEvent({
-      title,
-      event_time,
-      location,
-      description
-    });
+      await submitEvent({ title, event_time, location, description });
 
-    setCreateMode();
-    showFormMessage(
-      isEditMode ? "Cập nhật sự kiện thành công." : "Tạo sự kiện thành công.",
-      "success"
-    );
+      setCreateMode();
+      showFormMessage(
+        isEditMode ? "Cập nhật sự kiện thành công." : "Tạo sự kiện thành công.",
+        "success"
+      );
 
-    await loadEvents();
-  } catch (error) {
-    showFormMessage(error.message, "error");
-    console.error(error);
-  } finally {
-    submitBtnEl.disabled = false;
-    if (cancelBtnEl) cancelBtnEl.disabled = false;
-  }
-});
+      await loadEvents();
+    } catch (error) {
+      showFormMessage(error.message, "error");
+      console.error(error);
+    } finally {
+      if (submitBtnEl) submitBtnEl.disabled = false;
+      if (cancelBtnEl) cancelBtnEl.disabled = false;
+    }
+  });
+}
 
 if (cancelBtnEl) {
   cancelBtnEl.addEventListener("click", () => {
@@ -378,107 +403,109 @@ if (cancelBtnEl) {
   });
 }
 
-eventListEl.addEventListener("click", async (event) => {
-  const editButton = event.target.closest(".edit-button");
-  if (editButton) {
-    const eventId = Number.parseInt(editButton.dataset.eventId, 10);
-    if (!Number.isInteger(eventId)) {
-      showFormMessage("Không xác định được sự kiện cần chỉnh sửa.", "error");
-      return;
-    }
-
-    try {
-      const selectedEvent = currentEvents.find((item) => item.id === eventId);
-
-      if (!selectedEvent) {
-        showFormMessage("Sự kiện không tồn tại trong hệ thống.", "error");
+if (eventListEl) {
+  eventListEl.addEventListener("click", async (event) => {
+    const editButton = event.target.closest(".edit-button");
+    if (editButton) {
+      const eventId = Number.parseInt(editButton.dataset.eventId, 10);
+      if (!Number.isInteger(eventId)) {
+        showFormMessage("Không xác định được sự kiện cần chỉnh sửa.", "error");
         return;
       }
 
-      setEditMode(selectedEvent);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (error) {
-      showFormMessage("Không tải được dữ liệu sự kiện để chỉnh sửa.", "error");
-      console.error(error);
-    }
-    return;
-  }
-
-  const viewButton = event.target.closest(".view-registrations-button");
-  if (viewButton) {
-    const eventId = Number.parseInt(viewButton.dataset.eventId, 10);
-    if (!Number.isInteger(eventId)) {
-      showFormMessage("Không xác định được sự kiện cần xem đăng ký.", "error");
-      return;
-    }
-
-    const currentState = getRegistrationState(eventId);
-    registrationStateByEvent[eventId] = {
-      ...currentState,
-      expanded: !currentState.expanded,
-      error: currentState.expanded ? "" : currentState.error
-    };
-    renderEvents(currentEvents);
-
-    if (!currentState.expanded && !currentState.loaded) {
       try {
-        registrationStateByEvent[eventId] = {
-          ...getRegistrationState(eventId),
-          expanded: true,
-          loading: true,
-          error: ""
-        };
-        renderEvents(currentEvents);
+        const selectedEvent = currentEvents.find((item) => item.id === eventId);
 
-        const result = await loadRegistrations(eventId);
-        registrationStateByEvent[eventId] = {
-          expanded: true,
-          loading: false,
-          loaded: true,
-          error: "",
-          registrations: result.registrations || [],
-          total: result.total || 0
-        };
-        renderEvents(currentEvents);
-        showFormMessage(`Đã tải danh sách đăng ký của sự kiện #${eventId}.`, "success");
+        if (!selectedEvent) {
+          showFormMessage("Sự kiện không tồn tại trong hệ thống.", "error");
+          return;
+        }
+
+        setEditMode(selectedEvent);
+        window.scrollTo({ top: 0, behavior: "smooth" });
       } catch (error) {
-        registrationStateByEvent[eventId] = {
-          expanded: true,
-          loading: false,
-          loaded: false,
-          error: error.message || "Không thể lấy danh sách đăng ký.",
-          registrations: [],
-          total: 0
-        };
-        renderEvents(currentEvents);
-        showFormMessage(error.message || "Không thể lấy danh sách đăng ký.", "error");
+        showFormMessage("Không tải được dữ liệu sự kiện để chỉnh sửa.", "error");
         console.error(error);
       }
-    }
-    return;
-  }
-
-  const exportButton = event.target.closest(".export-button");
-  if (exportButton) {
-    const eventId = Number.parseInt(exportButton.dataset.eventId, 10);
-    if (!Number.isInteger(eventId)) {
-      showFormMessage("Không xác định được sự kiện cần xuất danh sách.", "error");
       return;
     }
 
-    try {
-      exportButton.disabled = true;
-      showFormMessage("Hệ thống đang xuất file XLSX...", "success");
-      const fileName = await exportRegistrations(eventId);
-      showFormMessage(`Xuất file thành công: ${fileName}`, "success");
-    } catch (error) {
-      showFormMessage(error.message || "Xuất file thất bại.", "error");
-      console.error(error);
-    } finally {
-      exportButton.disabled = false;
+    const viewButton = event.target.closest(".view-registrations-button");
+    if (viewButton) {
+      const eventId = Number.parseInt(viewButton.dataset.eventId, 10);
+      if (!Number.isInteger(eventId)) {
+        showFormMessage("Không xác định được sự kiện cần xem đăng ký.", "error");
+        return;
+      }
+
+      const currentState = getRegistrationState(eventId);
+      registrationStateByEvent[eventId] = {
+        ...currentState,
+        expanded: !currentState.expanded,
+        error: currentState.expanded ? "" : currentState.error
+      };
+      renderEvents(currentEvents);
+
+      if (!currentState.expanded && !currentState.loaded) {
+        try {
+          registrationStateByEvent[eventId] = {
+            ...getRegistrationState(eventId),
+            expanded: true,
+            loading: true,
+            error: ""
+          };
+          renderEvents(currentEvents);
+
+          const result = await loadRegistrations(eventId);
+          registrationStateByEvent[eventId] = {
+            expanded: true,
+            loading: false,
+            loaded: true,
+            error: "",
+            registrations: result.registrations || [],
+            total: result.totalRegistrations ?? result.total ?? 0
+          };
+          renderEvents(currentEvents);
+          showFormMessage(`Đã tải danh sách đăng ký của sự kiện #${eventId}.`, "success");
+        } catch (error) {
+          registrationStateByEvent[eventId] = {
+            expanded: true,
+            loading: false,
+            loaded: false,
+            error: error.message || "Không thể lấy danh sách đăng ký.",
+            registrations: [],
+            total: 0
+          };
+          renderEvents(currentEvents);
+          showFormMessage(error.message || "Không thể lấy danh sách đăng ký.", "error");
+          console.error(error);
+        }
+      }
+      return;
     }
-  }
-});
+
+    const exportButton = event.target.closest(".export-button");
+    if (exportButton) {
+      const eventId = Number.parseInt(exportButton.dataset.eventId, 10);
+      if (!Number.isInteger(eventId)) {
+        showFormMessage("Không xác định được sự kiện cần xuất danh sách.", "error");
+        return;
+      }
+
+      try {
+        exportButton.disabled = true;
+        showFormMessage("Hệ thống đang xuất file XLSX...", "success");
+        const fileName = await exportRegistrations(eventId);
+        showFormMessage(`Xuất file thành công: ${fileName}`, "success");
+      } catch (error) {
+        showFormMessage(error.message || "Xuất file thất bại.", "error");
+        console.error(error);
+      } finally {
+        exportButton.disabled = false;
+      }
+    }
+  });
+}
 
 setCreateMode();
 loadEvents();
