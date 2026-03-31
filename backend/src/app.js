@@ -622,6 +622,49 @@ app.put("/api/events/:id", async (req, res) => {
   }
 });
 
+app.delete("/api/events/:id", async (req, res) => {
+  try {
+    const eventId = parsePositiveInteger(req.params.id);
+
+    if (!eventId) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    const [result] = await pool.query(
+      `
+      DELETE FROM events
+      WHERE id = ?
+      `,
+      [eventId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    res.json({
+      message: "Xóa sự kiện thành công",
+      eventId
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Xóa sự kiện thất bại",
+      error: error.message
+    });
+  }
+});
+
 app.post("/api/registrations", async (req, res) => {
   try {
     const validation = validateRegistrationPayload(req.body);

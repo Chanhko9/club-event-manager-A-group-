@@ -243,6 +243,9 @@ function renderEvents(events) {
             <button type="button" class="export-button" data-event-id="${event.id}">
               Xuất danh sách XLSX
             </button>
+            <button type="button" class="delete-button" data-event-id="${event.id}">
+              Xóa sự kiện
+            </button>
           </div>
 
           ${renderRegistrationTable(event.id)}
@@ -292,6 +295,21 @@ async function submitEvent(payload) {
 
   if (!response.ok) {
     throw new Error(result?.message || (isEditMode ? "Cập nhật sự kiện thất bại" : "Tạo sự kiện thất bại"));
+  }
+
+  return result;
+}
+
+async function deleteEvent(eventId) {
+  const response = await fetch(`${API_EVENTS_URL}/${eventId}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" }
+  });
+
+  const result = await readJsonSafely(response);
+
+  if (!response.ok) {
+    throw new Error(result?.message || "Xóa sự kiện thất bại");
   }
 
   return result;
@@ -425,6 +443,48 @@ if (eventListEl) {
         window.scrollTo({ top: 0, behavior: "smooth" });
       } catch (error) {
         showFormMessage("Không tải được dữ liệu sự kiện để chỉnh sửa.", "error");
+        console.error(error);
+      }
+      return;
+    }
+
+    const deleteButton = event.target.closest(".delete-button");
+    if (deleteButton) {
+      const eventId = Number.parseInt(deleteButton.dataset.eventId, 10);
+      if (!Number.isInteger(eventId)) {
+        showFormMessage("Không xác định được sự kiện cần xóa.", "error");
+        return;
+      }
+
+      try {
+        const selectedEvent = currentEvents.find((item) => item.id === eventId);
+
+        if (!selectedEvent) {
+          showFormMessage("Sự kiện không tồn tại trong hệ thống.", "error");
+          return;
+        }
+
+        const confirmMessage = `Bạn chắc chắn muốn xóa sự kiện "${selectedEvent.title}" không? Hành động này không thể hoàn tác.`;
+        if (!window.confirm(confirmMessage)) {
+          return;
+        }
+
+        try {
+          deleteButton.disabled = true;
+          showFormMessage("Đang xóa sự kiện...", "success");
+
+          await deleteEvent(eventId);
+
+          showFormMessage(`Xóa sự kiện "${selectedEvent.title}" thành công.`, "success");
+          await loadEvents();
+        } catch (error) {
+          showFormMessage(error.message || "Xóa sự kiện thất bại.", "error");
+          console.error(error);
+        } finally {
+          deleteButton.disabled = false;
+        }
+      } catch (error) {
+        showFormMessage("Không tải được dữ liệu sự kiện để xóa.", "error");
         console.error(error);
       }
       return;
