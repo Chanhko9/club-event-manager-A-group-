@@ -53,10 +53,26 @@
       <div id="page-message" class="form-message" aria-live="polite"></div>
 
       <div class="filter-panel">
-        <div class="form-group">
-          <label for="event-selector">Chọn sự kiện</label>
-          <select id="event-selector"></select>
-          <small>Danh sách sẽ tự động cập nhật theo sự kiện được chọn.</small>
+        <div class="filter-grid">
+          <div class="form-group">
+            <label for="event-selector">Chọn sự kiện</label>
+            <select id="event-selector"></select>
+            <small>Danh sách sẽ tự động cập nhật theo sự kiện được chọn.</small>
+          </div>
+          <div class="form-group">
+            <label for="search-input">Tìm kiếm người đăng ký</label>
+            <input id="search-input" type="search" placeholder="Nhập họ tên, MSSV, email..." />
+            <small>Tìm theo họ tên, MSSV, email hoặc số điện thoại.</small>
+          </div>
+          <div class="form-group">
+            <label for="checkin-filter">Lọc theo check-in</label>
+            <select id="checkin-filter">
+              <option value="all">Tất cả trạng thái</option>
+              <option value="checked_in">Đã check-in</option>
+              <option value="not_checked_in">Chưa check-in</option>
+            </select>
+            <small>Giúp admin theo dõi nhanh tình hình tham gia sự kiện.</small>
+          </div>
         </div>
       </div>
 
@@ -70,6 +86,10 @@
 
       <div class="table-meta">
         <p id="registration-status" class="list-status">Đang tải dữ liệu...</p>
+        <div class="status-summary">
+          <span id="checked-in-summary" class="summary-chip">Đã check-in: 0</span>
+          <span id="not-checked-in-summary" class="summary-chip">Chưa check-in: 0</span>
+        </div>
       </div>
 
       <div id="empty-state" class="empty-state hidden">
@@ -86,6 +106,8 @@
               <th>MSSV</th>
               <th>Email</th>
               <th>Số điện thoại</th>
+              <th>Trạng thái check-in</th>
+              <th>Thời gian check-in</th>
               <th>Thời gian đăng ký</th>
             </tr>
           </thead>

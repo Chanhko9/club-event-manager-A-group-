@@ -170,10 +170,15 @@ async function getRegistrationsByEventId(eventId) {
         student_id,
         email,
         phone,
+        checked_in_at,
+        CASE
+          WHEN checked_in_at IS NULL THEN 'Chưa check-in'
+          ELSE 'Đã check-in'
+        END AS check_in_status,
         created_at
       FROM registrations
       WHERE event_id = ?
-      ORDER BY created_at ASC, id ASC
+      ORDER BY created_at DESC, id DESC
     `,
     [eventId]
   );
@@ -210,6 +215,8 @@ async function buildRegistrationWorkbook(event, registrations) {
     { header: "MSSV", key: "student_id", minWidth: 14, maxWidth: 20 },
     { header: "Email", key: "email", minWidth: 24, maxWidth: 40 },
     { header: "Số điện thoại", key: "phone", minWidth: 16, maxWidth: 24 },
+    { header: "Trạng thái check-in", key: "check_in_status", minWidth: 18, maxWidth: 24 },
+    { header: "Thời gian check-in", key: "checked_in_at", minWidth: 22, maxWidth: 28 },
     { header: "Thời gian đăng ký", key: "created_at", minWidth: 22, maxWidth: 28 }
   ];
 
@@ -284,7 +291,7 @@ async function buildRegistrationWorkbook(event, registrations) {
     width: column.minWidth
   }));
 
-  sheet.mergeCells("A1:G1");
+  sheet.mergeCells("A1:I1");
   sheet.getCell("A1").value = `DANH SÁCH ĐĂNG KÝ - ${event.title}`;
   sheet.getCell("A1").font = { size: 16, bold: true };
   sheet.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
@@ -321,6 +328,8 @@ async function buildRegistrationWorkbook(event, registrations) {
       student_id: registration.student_id,
       email: registration.email,
       phone: registration.phone || "",
+      check_in_status: registration.checked_in_at ? "Đã check-in" : "Chưa check-in",
+      checked_in_at: formatDateTimeText(registration.checked_in_at),
       created_at: formatDateTimeText(registration.created_at)
     });
   });
@@ -333,6 +342,8 @@ async function buildRegistrationWorkbook(event, registrations) {
       student_id: "",
       email: "",
       phone: "",
+      check_in_status: "",
+      checked_in_at: "",
       created_at: ""
     });
     emptyRow.font = { italic: true, color: { argb: "FF666666" } };
@@ -342,7 +353,7 @@ async function buildRegistrationWorkbook(event, registrations) {
   const lastTableRow = sheet.rowCount;
 
   for (let rowNumber = firstTableRow; rowNumber <= lastTableRow; rowNumber += 1) {
-    for (let colNumber = 1; colNumber <= 7; colNumber += 1) {
+    for (let colNumber = 1; colNumber <= columns.length; colNumber += 1) {
       const cell = sheet.getRow(rowNumber).getCell(colNumber);
       cell.border = {
         top: { style: "thin", color: { argb: "FFD9E2F3" } },

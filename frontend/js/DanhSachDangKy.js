@@ -22,8 +22,14 @@ const heroEventTitleEl = document.getElementById("hero-event-title");
 const heroRegistrationCountEl = document.getElementById("hero-registration-count");
 const heroRegistrationStatusEl = document.getElementById("hero-registration-status");
 const registrationFormLinkEl = document.getElementById("registration-form-link");
+const searchInputEl = document.getElementById("search-input");
+const checkinFilterEl = document.getElementById("checkin-filter");
+const checkedInSummaryEl = document.getElementById("checked-in-summary");
+const notCheckedInSummaryEl = document.getElementById("not-checked-in-summary");
 
 let eventsData = [];
+let currentRegistrations = [];
+let currentEvent = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -39,6 +45,14 @@ function formatDate(dateString) {
   const date = new Date(dateString);
   if (Number.isNaN(date.getTime())) return "Không hợp lệ";
   return date.toLocaleString("vi-VN");
+}
+
+function getCheckInStatusLabel(registration) {
+  return registration.checked_in_at ? "Đã check-in" : "Chưa check-in";
+}
+
+function getCheckInStatusClass(registration) {
+  return registration.checked_in_at ? "checked-in" : "not-checked-in";
 }
 
 async function readJsonSafely(response) {
@@ -122,26 +136,87 @@ function renderSelectedEventInfo(event) {
   `;
 }
 
+function updateSummary(registrations) {
+  const checkedInCount = registrations.filter((item) => item.checked_in_at).length;
+  const notCheckedInCount = registrations.length - checkedInCount;
+
+  checkedInSummaryEl.textContent = `Đã check-in: ${checkedInCount}`;
+  notCheckedInSummaryEl.textContent = `Chưa check-in: ${notCheckedInCount}`;
+}
+
 function renderRegistrations(registrations) {
   registrationTableBodyEl.innerHTML = registrations
-    .map(
-      (registration, index) => `
-        <tr>
-          <td>${index + 1}</td>
-          <td>${escapeHtml(registration.full_name)}</td>
-          <td>${escapeHtml(registration.student_id)}</td>
-          <td>${escapeHtml(registration.email)}</td>
-          <td>${escapeHtml(registration.phone || "-")}</td>
-          <td>${formatDate(registration.created_at)}</td>
-        </tr>
-      `
-    )
+    .map((registration, index) => `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${escapeHtml(registration.full_name)}</td>
+        <td>${escapeHtml(registration.student_id)}</td>
+        <td>${escapeHtml(registration.email)}</td>
+        <td>${escapeHtml(registration.phone || "-")}</td>
+        <td>
+          <span class="status-badge ${getCheckInStatusClass(registration)}">
+            ${getCheckInStatusLabel(registration)}
+          </span>
+        </td>
+        <td>${registration.checked_in_at ? formatDate(registration.checked_in_at) : "-"}</td>
+        <td>${formatDate(registration.created_at)}</td>
+      </tr>
+    `)
     .join("");
 }
 
 function toggleListState(hasData) {
   emptyStateEl.classList.toggle("hidden", hasData);
   tableWrapperEl.classList.toggle("hidden", !hasData);
+}
+
+function getFilteredRegistrations() {
+  const keyword = String(searchInputEl.value || "").trim().toLowerCase();
+  const statusFilter = checkinFilterEl.value;
+
+  return currentRegistrations.filter((registration) => {
+    const matchesKeyword = !keyword || [
+      registration.full_name,
+      registration.student_id,
+      registration.email,
+      registration.phone
+    ].some((value) => String(value || "").toLowerCase().includes(keyword));
+
+    const isCheckedIn = Boolean(registration.checked_in_at);
+    const matchesStatus =
+      statusFilter === "all"
+      || (statusFilter === "checked_in" && isCheckedIn)
+      || (statusFilter === "not_checked_in" && !isCheckedIn);
+
+    return matchesKeyword && matchesStatus;
+  });
+}
+
+function updateRegistrationView() {
+  if (!currentEvent) {
+    updateSummary([]);
+    registrationTableBodyEl.innerHTML = "";
+    registrationStatusEl.textContent = "Chưa có sự kiện để xem danh sách đăng ký.";
+    toggleListState(false);
+    return;
+  }
+
+  updateSummary(currentRegistrations);
+  const filteredRegistrations = getFilteredRegistrations();
+  renderRegistrations(filteredRegistrations);
+  toggleListState(filteredRegistrations.length > 0);
+
+  if (!currentRegistrations.length) {
+    registrationStatusEl.textContent = "Sự kiện này chưa có người đăng ký.";
+    return;
+  }
+
+  if (!filteredRegistrations.length) {
+    registrationStatusEl.textContent = "Không có người đăng ký phù hợp với bộ lọc hiện tại.";
+    return;
+  }
+
+  registrationStatusEl.textContent = `Đang hiển thị ${filteredRegistrations.length}/${currentRegistrations.length} người đăng ký cho sự kiện đã chọn.`;
 }
 
 async function loadEvents() {
@@ -169,62 +244,63 @@ async function loadRegistrationsByEvent(eventId) {
 function renderEventSelector(events) {
   eventSelectorEl.innerHTML = events.length
     ? events
-        .map(
-          (event) => `
-            <option value="${event.id}">
-              ${escapeHtml(event.title)} - ${formatDate(event.event_time)}
-            </option>
-          `
-        )
+        .map((event) => `
+          <option value="${event.id}">
+            ${escapeHtml(event.title)} - ${formatDate(event.event_time)}
+          </option>
+        `)
         .join("")
     : '<option value="">Chưa có sự kiện</option>';
 }
 
 async function handleEventChange(eventId) {
-  const selectedEvent = eventsData.find((item) => String(item.id) === String(eventId));
+  currentEvent = eventsData.find((item) => String(item.id) === String(eventId)) || null;
 
-  if (!selectedEvent || !eventId) {
+  if (!currentEvent || !eventId) {
+    currentRegistrations = [];
     renderSelectedEventInfo(null);
     registrationStatusEl.textContent = "Chưa có sự kiện để xem danh sách đăng ký.";
     registrationTableBodyEl.innerHTML = "";
     toggleListState(false);
+    updateSummary([]);
     setHeroState({ status: "Chưa có dữ liệu" });
     updateQueryString("");
     return;
   }
 
-  renderSelectedEventInfo(selectedEvent);
+  renderSelectedEventInfo(currentEvent);
   registrationStatusEl.textContent = "Đang tải danh sách người đăng ký...";
   setHeroState({
-    eventTitle: selectedEvent.title,
-    count: Number(selectedEvent.registration_count || 0),
+    eventTitle: currentEvent.title,
+    count: Number(currentEvent.registration_count || 0),
     status: "Đang tải danh sách"
   });
 
   try {
     const result = await loadRegistrationsByEvent(eventId);
-    renderRegistrations(result.registrations);
+    currentRegistrations = Array.isArray(result.registrations) ? result.registrations : [];
 
     const registrationCount = Number(result.totalRegistrations || 0);
-    selectedEvent.registration_count = registrationCount;
-    renderSelectedEventInfo(selectedEvent);
+    currentEvent.registration_count = registrationCount;
+    renderSelectedEventInfo(currentEvent);
 
-    registrationStatusEl.textContent = `Đang hiển thị ${registrationCount} người đăng ký cho sự kiện đã chọn.`;
     setHeroState({
-      eventTitle: selectedEvent.title,
+      eventTitle: currentEvent.title,
       count: registrationCount,
       status: registrationCount > 0 ? "Đã tải thành công" : "Danh sách trống"
     });
 
-    toggleListState(registrationCount > 0);
+    updateRegistrationView();
     updateQueryString(eventId);
   } catch (error) {
+    currentRegistrations = [];
     registrationTableBodyEl.innerHTML = "";
     toggleListState(false);
+    updateSummary([]);
     registrationStatusEl.textContent = "Không tải được danh sách người đăng ký.";
     setHeroState({
-      eventTitle: selectedEvent.title,
-      count: Number(selectedEvent.registration_count || 0),
+      eventTitle: currentEvent.title,
+      count: Number(currentEvent.registration_count || 0),
       status: "Tải thất bại"
     });
     showPageMessage(error.message, "error");
@@ -241,9 +317,12 @@ async function initializePage() {
     renderEventSelector(eventsData);
 
     if (!eventsData.length) {
+      currentEvent = null;
+      currentRegistrations = [];
       renderSelectedEventInfo(null);
       registrationStatusEl.textContent = "Hệ thống chưa có sự kiện nào.";
       setHeroState({ status: "Chưa có sự kiện" });
+      updateSummary([]);
       toggleListState(false);
       return;
     }
@@ -257,9 +336,12 @@ async function initializePage() {
     eventSelectorEl.value = selectedEventId;
     await handleEventChange(selectedEventId);
   } catch (error) {
+    currentEvent = null;
+    currentRegistrations = [];
     renderSelectedEventInfo(null);
     registrationStatusEl.textContent = "Không tải được dữ liệu ban đầu.";
     setHeroState({ status: "Tải thất bại" });
+    updateSummary([]);
     toggleListState(false);
     showPageMessage(error.message || "Không thể khởi tạo trang danh sách đăng ký.", "error");
     console.error(error);
@@ -269,6 +351,14 @@ async function initializePage() {
 eventSelectorEl.addEventListener("change", async (event) => {
   clearPageMessage();
   await handleEventChange(event.target.value);
+});
+
+searchInputEl.addEventListener("input", () => {
+  updateRegistrationView();
+});
+
+checkinFilterEl.addEventListener("change", () => {
+  updateRegistrationView();
 });
 
 initializePage();

@@ -17,9 +17,9 @@ function resetData() {
   ];
 
   registrations = [
-    { id: 1, event_id: 1, full_name: "Nguyen Van A", student_id: "SV001", email: "sv001@example.com", phone: "0900000001", created_at: "2026-03-23 12:37:58" },
-    { id: 2, event_id: 1, full_name: "Tran Thi B", student_id: "SV002", email: "sv002@example.com", phone: "0900000002", created_at: "2026-03-23 12:40:00" },
-    { id: 3, event_id: 2, full_name: "Le Van C", student_id: "SV003", email: "sv003@example.com", phone: "0900000003", created_at: "2026-03-23 12:45:00" }
+    { id: 1, event_id: 1, full_name: "Nguyen Van A", student_id: "SV001", email: "sv001@example.com", phone: "0900000001", checked_in_at: null, created_at: "2026-03-23 12:37:58" },
+    { id: 2, event_id: 1, full_name: "Tran Thi B", student_id: "SV002", email: "sv002@example.com", phone: "0900000002", checked_in_at: "2026-03-25 17:45:00", created_at: "2026-03-23 12:40:00" },
+    { id: 3, event_id: 2, full_name: "Le Van C", student_id: "SV003", email: "sv003@example.com", phone: "0900000003", checked_in_at: null, created_at: "2026-03-23 12:45:00" }
   ];
 }
 
@@ -50,12 +50,12 @@ const mockPool = {
       return [registrations.filter((item) => item.event_id === Number(params[0])).sort((a, b) => {
         const timeDiff = new Date(b.created_at) - new Date(a.created_at);
         return timeDiff !== 0 ? timeDiff : b.id - a.id;
-      }).map((item) => clone(item))];
+      }).map((item) => clone({ ...item, check_in_status: item.checked_in_at ? "Đã check-in" : "Chưa check-in" }))];
     }
 
     if (normalizedSql.includes("INSERT INTO registrations")) {
       const [eventId, fullName, studentId, email, phone] = params;
-      const newRegistration = { id: registrations.length + 1, event_id: Number(eventId), full_name: fullName, student_id: studentId, email, phone, created_at: "2026-03-25 10:00:00" };
+      const newRegistration = { id: registrations.length + 1, event_id: Number(eventId), full_name: fullName, student_id: studentId, email, phone, checked_in_at: null, created_at: "2026-03-25 10:00:00" };
       registrations.push(newRegistration);
       return [{ insertId: newRegistration.id }];
     }
@@ -113,7 +113,7 @@ test("GET /api/events trả về danh sách sự kiện kèm registration_count"
   });
 });
 
-test("GET /api/events/:id/registrations trả về đúng danh sách theo sự kiện", async () => {
+test("GET /api/events/:id/registrations trả về đúng danh sách theo sự kiện và trạng thái check-in", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/events/1/registrations`);
     const data = await response.json();
@@ -121,6 +121,10 @@ test("GET /api/events/:id/registrations trả về đúng danh sách theo sự k
     assert.equal(data.event.id, 1);
     assert.equal(data.totalRegistrations, 2);
     assert.deepEqual(data.registrations.map((item) => item.full_name), ["Tran Thi B", "Nguyen Van A"]);
+    assert.equal(data.registrations[0].check_in_status, "Đã check-in");
+    assert.equal(data.registrations[0].checked_in_at, "2026-03-25 17:45:00");
+    assert.equal(data.registrations[1].check_in_status, "Chưa check-in");
+    assert.equal(data.registrations[1].checked_in_at, null);
   });
 });
 
@@ -144,7 +148,7 @@ test("GET /api/events/:id/registrations trả về 404 nếu sự kiện không 
   });
 });
 
-test("POST /api/registrations vẫn đăng ký thành công và cập nhật danh sách", async () => {
+test("POST /api/registrations vẫn đăng ký thành công và mặc định chưa check-in", async () => {
   await withServer(async (baseUrl) => {
     const createResponse = await fetch(`${baseUrl}/api/registrations`, {
       method: "POST",
@@ -160,5 +164,7 @@ test("POST /api/registrations vẫn đăng ký thành công và cập nhật dan
     assert.equal(listResponse.status, 200);
     assert.equal(listData.totalRegistrations, 1);
     assert.equal(listData.registrations[0].student_id, "SV010");
+    assert.equal(listData.registrations[0].check_in_status, "Chưa check-in");
+    assert.equal(listData.registrations[0].checked_in_at, null);
   });
 });
