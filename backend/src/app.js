@@ -291,7 +291,7 @@ async function buildRegistrationWorkbook(event, registrations) {
     width: column.minWidth
   }));
 
-  sheet.mergeCells("A1:G1");
+  sheet.mergeCells("A1:I1");
   sheet.getCell("A1").value = `DANH SÁCH ĐĂNG KÝ - ${event.title}`;
   sheet.getCell("A1").font = { size: 16, bold: true };
   sheet.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
@@ -342,6 +342,8 @@ async function buildRegistrationWorkbook(event, registrations) {
       student_id: "",
       email: "",
       phone: "",
+      check_in_status: "",
+      checked_in_at: "",
       created_at: ""
     });
     emptyRow.font = { italic: true, color: { argb: "FF666666" } };
@@ -351,7 +353,7 @@ async function buildRegistrationWorkbook(event, registrations) {
   const lastTableRow = sheet.rowCount;
 
   for (let rowNumber = firstTableRow; rowNumber <= lastTableRow; rowNumber += 1) {
-    for (let colNumber = 1; colNumber <= 7; colNumber += 1) {
+    for (let colNumber = 1; colNumber <= columns.length; colNumber += 1) {
       const cell = sheet.getRow(rowNumber).getCell(colNumber);
       cell.border = {
         top: { style: "thin", color: { argb: "FFD9E2F3" } },
