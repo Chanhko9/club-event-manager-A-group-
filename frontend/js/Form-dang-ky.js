@@ -16,6 +16,8 @@ const eventSelectEl = document.getElementById("event_id");
 const selectedEventInfoEl = document.getElementById("selected-event-info");
 const registrationMessageEl = document.getElementById("registration-message");
 const submitButtonEl = registrationFormEl?.querySelector('button[type="submit"]');
+const toastContainerEl = document.getElementById("toast-container");
+let activeToastTimer = null;
 
 let eventsData = [];
 
@@ -60,6 +62,43 @@ function clearRegistrationMessage() {
   registrationMessageEl.textContent = "";
   registrationMessageEl.className = "form-message";
 }
+
+function showToast(message, type = "success") {
+  if (!toastContainerEl) return;
+
+  if (activeToastTimer) {
+    window.clearTimeout(activeToastTimer);
+    activeToastTimer = null;
+  }
+
+  const toastEl = document.createElement("div");
+  toastEl.className = `toast ${type}`;
+  toastEl.setAttribute("role", "status");
+  toastEl.innerHTML = `
+    <div class="toast-icon">${type === "success" ? "✓" : "!"}</div>
+    <div class="toast-content">
+      <strong>${type === "success" ? "Đăng ký thành công" : "Thông báo"}</strong>
+      <span>${escapeHtml(message)}</span>
+    </div>
+  `;
+
+  toastContainerEl.innerHTML = "";
+  toastContainerEl.appendChild(toastEl);
+
+  requestAnimationFrame(() => {
+    toastEl.classList.add("show");
+  });
+
+  activeToastTimer = window.setTimeout(() => {
+    toastEl.classList.remove("show");
+    window.setTimeout(() => {
+      if (toastEl.parentElement === toastContainerEl) {
+        toastContainerEl.innerHTML = "";
+      }
+    }, 220);
+  }, 3200);
+}
+
 
 function renderSelectedEventInfo(eventId) {
   const event = eventsData.find((item) => String(item.id) === String(eventId));
@@ -175,6 +214,7 @@ if (registrationFormEl) {
       }
 
       showRegistrationMessage(result.message, "success");
+      showToast(result.message || "Đăng ký tham gia thành công.", "success");
     } catch (error) {
       if (error.status === 409) {
         showRegistrationMessage(
