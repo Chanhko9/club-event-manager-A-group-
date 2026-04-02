@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Form đăng ký sinh viên</title>
+  <link rel="stylesheet" href="./css/FormDangKy.css" />
+</head>
+<body>
+  <main class="page-shell">
+    <section class="hero-card">
+      <div class="hero-content">
+        <p class="hero-badge">Club Event Manager</p>
+        <h1>Form đăng ký tham gia sự kiện dành cho sinh viên</h1>
+        <p class="hero-text">
+          Vui lòng điền đầy đủ và chính xác thông tin để ban tổ chức xác nhận đăng ký,
+          gửi lịch tham gia và hỗ trợ khi cần thiết.
+        </p>
+
+        <div class="event-highlight">
+          <div class="highlight-item">
+            <span class="highlight-label">Sự kiện nổi bật</span>
+            <strong>Workshop Kỹ năng lãnh đạo CLB 2026</strong>
+          </div>
+          <div class="highlight-item">
+            <span class="highlight-label">Thời gian</span>
+            <strong>08:00 - 11:30 | 12/04/2026</strong>
+          </div>
+          <div class="highlight-item">
+            <span class="highlight-label">Địa điểm</span>
+            <strong>Toà B - Hội trường B</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="form-card">
+      <div class="form-header">
+        <div>
+          <p class="section-tag">Đăng ký ngay</p>
+          <h2>Thông tin sinh viên</h2>
+          <p class="section-text">
+            Những trường có dấu <span class="required">*</span> là bắt buộc.
+          </p>
+        </div>
+        <div class="deadline-box">
+          <span>Hạn đăng ký</span>
+          <strong>23:59 - 10/04/2026</strong>
+        </div>
+      </div>
+
+      <form class="student-form">
+        <div id="registration-message" class="form-message" aria-live="polite"></div>
+        <div class="form-grid two-columns">
+          <div class="form-group full-width">
+            <label for="event_name">Chọn sự kiện <span class="required">*</span></label>
+           <select id="event_id" name="event_id" required>
+              <option value="">-- Chọn sự kiện muốn tham gia --</option>
+            </select>
+            <div id="selected-event-info" class="selected-event-info"></div>
+            <small>Chọn đúng sự kiện để hệ thống ghi nhận đăng ký chính xác.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="full_name">Họ và tên <span class="required">*</span></label>
+            <input id="full_name" name="full_name" type="text" placeholder="Ví dụ: Nguyễn Văn A" required />
+          </div>
+
+          <div class="form-group">
+            <label for="student_id">Mã sinh viên <span class="required">*</span></label>
+            <input id="student_id" name="student_id" type="text"  />
+          </div>
+
+          <div class="form-group">
+            <label for="class_name">Lớp</label>
+            <input id="class_name" name="class_name" type="text" placeholder="Ví dụ: 50.CNTT.A" />
+          </div>
+
+          <div class="form-group">
+            <label for="faculty">Khoa / Ngành học</label>
+            <input id="faculty" name="faculty" type="text" placeholder="Ví dụ: Công nghệ thông tin" />
+          </div>
+        </div>
+
+        <div class="divider">
+          <span>Thông tin liên hệ</span>
+        </div>
+
+        <div class="form-grid two-columns">
+          <div class="form-group">
+            <label for="email">Email sinh viên <span class="required">*</span></label>
+            <input id="email" name="email" type="email" placeholder="Ví dụ: nguyenvana@.com" required />
+            <small>Email được dùng để gửi thông báo xác nhận và lịch tham gia.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="phone">Số điện thoại <span class="required">*</span></label>
+            <input id="phone" name="phone" type="tel"  />
+          </div>
+
+          <div class="form-group full-width">
+            <label for="reason">Lý do / mong muốn tham gia</label>
+            <textarea id="reason" name="reason" rows="4" placeholder="Chia sẻ ngắn gọn lý do bạn muốn tham gia sự kiện này..."></textarea>
+          </div>
+        </div>
+
+        <div class="divider">
+          <span>Xác nhận đăng ký</span>
+        </div>
+
+        <div class="consent-box">
+          <label class="checkbox-wrap" for="commitment">
+            <input id="commitment" name="commitment" type="checkbox" required />
+            <span>
+              Tôi xác nhận các thông tin đã cung cấp là chính xác và đồng ý để ban tổ chức
+              sử dụng dữ liệu này cho mục đích quản lý đăng ký sự kiện.
+            </span>
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="primary-btn">Gửi đăng ký</button>
+          <button type="reset" class="secondary-btn">Nhập lại</button>
+        </div>
+      </form>
+    </section>
+  </main>
+  <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+  <script src="./js/Form-dang-ky.js"></script>
+</body>
+</html>
