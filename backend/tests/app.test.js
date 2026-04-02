@@ -46,6 +46,32 @@ const mockPool = {
       return [[duplicated ? clone({ id: duplicated.id, student_id: duplicated.student_id, email: duplicated.email }) : undefined].filter(Boolean)];
     }
 
+    if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("WHERE event_id = ? AND id = ?") && normalizedSql.includes("LIMIT 1")) {
+      const [eventId, registrationId] = params;
+      const registration = registrations.find((item) => item.event_id === Number(eventId) && item.id === Number(registrationId));
+      return [[registration ? clone({ ...registration, check_in_status: registration.checked_in_at ? "Đã check-in" : "Chưa check-in" }) : undefined].filter(Boolean)];
+    }
+
+    if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("WHERE event_id = ?") && normalizedSql.includes("LOWER(email) = LOWER(?)") && normalizedSql.includes("UPPER(student_id) = UPPER(?)") && normalizedSql.includes("ORDER BY id DESC") && params.length === 3) {
+      const [eventId, a, b] = params;
+      const registration = registrations.filter((item) => item.event_id === Number(eventId) && (item.email.toLowerCase() === String(a).toLowerCase() || item.student_id.toUpperCase() === String(b).toUpperCase())).sort((x, y) => y.id - x.id)[0];
+      return [[registration ? clone({ ...registration, check_in_status: registration.checked_in_at ? "Đã check-in" : "Chưa check-in" }) : undefined].filter(Boolean)];
+    }
+
+    if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("ORDER BY id DESC") && params.length === 4) {
+      const [eventId, registrationId, a, b] = params;
+      const registration = registrations.filter((item) => item.event_id === Number(eventId) && (item.id === Number(registrationId) || item.email.toLowerCase() === String(a).toLowerCase() || item.student_id.toUpperCase() === String(b).toUpperCase())).sort((x, y) => y.id - x.id)[0];
+      return [[registration ? clone({ ...registration, check_in_status: registration.checked_in_at ? "Đã check-in" : "Chưa check-in" }) : undefined].filter(Boolean)];
+    }
+
+    if (normalizedSql.includes("UPDATE registrations") && normalizedSql.includes("SET checked_in_at = NOW()")) {
+      const [eventId, registrationId] = params;
+      const registration = registrations.find((item) => item.event_id === Number(eventId) && item.id === Number(registrationId) && item.checked_in_at == null);
+      if (!registration) return [{ affectedRows: 0 }];
+      registration.checked_in_at = "2026-03-25 18:15:00";
+      return [{ affectedRows: 1 }];
+    }
+
     if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("ORDER BY created_at DESC, id DESC")) {
       return [registrations.filter((item) => item.event_id === Number(params[0])).sort((a, b) => {
         const timeDiff = new Date(b.created_at) - new Date(a.created_at);
@@ -166,5 +192,58 @@ test("POST /api/registrations vẫn đăng ký thành công và mặc định ch
     assert.equal(listData.registrations[0].student_id, "SV010");
     assert.equal(listData.registrations[0].check_in_status, "Chưa check-in");
     assert.equal(listData.registrations[0].checked_in_at, null);
+  });
+});
+
+
+test("GET /api/events/:id/registrations/search tìm được theo email, MSSV hoặc mã đăng ký", async () => {
+  await withServer(async (baseUrl) => {
+    const byEmail = await fetch(`${baseUrl}/api/events/1/registrations/search?keyword=sv001@example.com`);
+    const emailData = await byEmail.json();
+    assert.equal(byEmail.status, 200);
+    assert.equal(emailData.registration.id, 1);
+    assert.equal(emailData.registration.registration_code, "DK-0001");
+    assert.equal(emailData.registration.is_checked_in, false);
+
+    const byStudentId = await fetch(`${baseUrl}/api/events/1/registrations/search?keyword=sv002`);
+    const studentData = await byStudentId.json();
+    assert.equal(byStudentId.status, 200);
+    assert.equal(studentData.registration.id, 2);
+    assert.equal(studentData.registration.is_checked_in, true);
+
+    const byCode = await fetch(`${baseUrl}/api/events/1/registrations/search?keyword=DK-0001`);
+    const codeData = await byCode.json();
+    assert.equal(byCode.status, 200);
+    assert.equal(codeData.registration.id, 1);
+  });
+});
+
+test("POST /api/events/:id/check-in/manual cập nhật thời gian check-in", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/events/1/check-in/manual`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ registration_id: 1 })
+    });
+    const data = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(data.registration.id, 1);
+    assert.equal(data.registration.is_checked_in, true);
+    assert.equal(data.registration.check_in_status, "Đã check-in");
+    assert.equal(data.registration.checked_in_at, "2026-03-25 18:15:00");
+  });
+});
+
+test("POST /api/events/:id/check-in/manual trả về 409 nếu đã check-in", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/events/1/check-in/manual`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ registration_id: 2 })
+    });
+    const data = await response.json();
+    assert.equal(response.status, 409);
+    assert.equal(data.registration.id, 2);
+    assert.equal(data.registration.is_checked_in, true);
   });
 });

@@ -32,6 +32,116 @@ function parsePositiveInteger(value) {
   return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null;
 }
 
+
+function buildRegistrationCode(registrationId) {
+  return `DK-${String(registrationId).padStart(4, "0")}`;
+}
+
+function normalizeManualCheckinKeyword(value) {
+  return normalizeText(value);
+}
+
+function mapRegistrationForClient(registration) {
+  return {
+    ...registration,
+    registration_code: buildRegistrationCode(registration.id),
+    is_checked_in: Boolean(registration.checked_in_at)
+  };
+}
+
+async function findRegistrationByIdForEvent(eventId, registrationId) {
+  const [rows] = await pool.query(
+    `
+      SELECT
+        id,
+        event_id,
+        full_name,
+        student_id,
+        email,
+        phone,
+        checked_in_at,
+        CASE
+          WHEN checked_in_at IS NULL THEN 'Chưa check-in'
+          ELSE 'Đã check-in'
+        END AS check_in_status,
+        created_at
+      FROM registrations
+      WHERE event_id = ? AND id = ?
+      LIMIT 1
+    `,
+    [eventId, registrationId]
+  );
+
+  return rows[0] || null;
+}
+
+async function findRegistrationForManualCheckin(eventId, keyword) {
+  const trimmedKeyword = normalizeManualCheckinKeyword(keyword);
+  if (!trimmedKeyword) {
+    return null;
+  }
+
+  const normalizedEmail = normalizeEmail(trimmedKeyword);
+  const normalizedStudentId = normalizeStudentId(trimmedKeyword);
+  const registrationCodeMatch = normalizedStudentId.match(/^DK-(\d+)$/i);
+
+  let sql = `
+    SELECT
+      id,
+      event_id,
+      full_name,
+      student_id,
+      email,
+      phone,
+      checked_in_at,
+      CASE
+        WHEN checked_in_at IS NULL THEN 'Chưa check-in'
+        ELSE 'Đã check-in'
+      END AS check_in_status,
+      created_at
+    FROM registrations
+    WHERE event_id = ?
+      AND (
+        LOWER(email) = LOWER(?)
+        OR UPPER(student_id) = UPPER(?)
+      )
+    ORDER BY id DESC
+    LIMIT 1
+  `;
+  let params = [eventId, normalizedEmail, normalizedStudentId];
+
+  if (registrationCodeMatch) {
+    sql = `
+      SELECT
+        id,
+        event_id,
+        full_name,
+        student_id,
+        email,
+        phone,
+        checked_in_at,
+        CASE
+          WHEN checked_in_at IS NULL THEN 'Chưa check-in'
+          ELSE 'Đã check-in'
+        END AS check_in_status,
+        created_at
+      FROM registrations
+      WHERE event_id = ?
+        AND (
+          id = ?
+          OR LOWER(email) = LOWER(?)
+          OR UPPER(student_id) = UPPER(?)
+        )
+      ORDER BY id DESC
+      LIMIT 1
+    `;
+    params = [eventId, Number.parseInt(registrationCodeMatch[1], 10), normalizedEmail, normalizedStudentId];
+  }
+
+  const [rows] = await pool.query(sql, params);
+  return rows[0] || null;
+}
+
 function validateEventPayload(payload) {
   const title = normalizeText(payload.title);
   const location = normalizeText(payload.location);
@@ -504,13 +614,118 @@ app.get("/api/events/:id/registrations", async (req, res) => {
 
     return res.json({
       event,
-      registrations,
+      registrations: registrations.map(mapRegistrationForClient),
       totalRegistrations: registrations.length,
       total: registrations.length
     });
   } catch (error) {
     return res.status(500).json({
       message: "Không thể lấy danh sách đăng ký",
+      error: error.message
+    });
+  }
+});
+
+
+app.get("/api/events/:id/registrations/search", async (req, res) => {
+  try {
+    const eventId = parsePositiveInteger(req.params.id);
+    const keyword = normalizeManualCheckinKeyword(req.query.keyword);
+
+    if (!eventId) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    if (!keyword) {
+      return res.status(400).json({
+        message: "Vui lòng nhập mã đăng ký, email hoặc MSSV để tìm kiếm."
+      });
+    }
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    const registration = await findRegistrationForManualCheckin(eventId, keyword);
+    if (!registration) {
+      return res.status(404).json({
+        message: "Không thể tìm người đăng ký"
+      });
+    }
+
+    return res.json({
+      event,
+      registration: mapRegistrationForClient(registration)
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể tìm người đăng ký",
+      error: error.message
+    });
+  }
+});
+
+app.post("/api/events/:id/check-in/manual", async (req, res) => {
+  try {
+    const eventId = parsePositiveInteger(req.params.id);
+    const registrationId = parsePositiveInteger(req.body?.registration_id);
+
+    if (!eventId) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    if (!registrationId) {
+      return res.status(400).json({
+        message: "registration_id is invalid"
+      });
+    }
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    const registration = await findRegistrationByIdForEvent(eventId, registrationId);
+    if (!registration) {
+      return res.status(404).json({
+        message: "Không tìm thấy người đăng ký cho sự kiện này"
+      });
+    }
+
+    if (registration.checked_in_at) {
+      return res.status(409).json({
+        message: "Người tham gia này đã được check-in trước đó.",
+        registration: mapRegistrationForClient(registration)
+      });
+    }
+
+    await pool.query(
+      `
+        UPDATE registrations
+        SET checked_in_at = NOW()
+        WHERE event_id = ? AND id = ? AND checked_in_at IS NULL
+      `,
+      [eventId, registrationId]
+    );
+
+    const updatedRegistration = await findRegistrationByIdForEvent(eventId, registrationId);
+
+    return res.json({
+      message: "Check-in thủ công thành công.",
+      registration: mapRegistrationForClient(updatedRegistration)
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể check-in thủ công",
       error: error.message
     });
   }
