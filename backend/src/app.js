@@ -7,6 +7,7 @@ const ExcelJS = require("exceljs");
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 const pool = require("./config/db");
+const { EMAIL_STATUS, sendConfirmationEmail } = require("./services/confirmationEmailService");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -31,7 +32,6 @@ function parsePositiveInteger(value) {
   const parsedValue = Number.parseInt(value, 10);
   return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null;
 }
-
 
 function buildRegistrationCode(registrationId) {
   return `DK-${String(registrationId).padStart(4, "0")}`;
@@ -280,6 +280,9 @@ async function getRegistrationsByEventId(eventId) {
         student_id,
         email,
         phone,
+        email_delivery_status,
+        email_sent_at,
+        email_error_message,
         checked_in_at,
         CASE
           WHEN checked_in_at IS NULL THEN 'Chưa check-in'
@@ -294,6 +297,45 @@ async function getRegistrationsByEventId(eventId) {
   );
 
   return rows;
+}
+
+async function findRegistrationById(registrationId) {
+  const [rows] = await pool.query(
+    `
+      SELECT
+        id,
+        event_id,
+        full_name,
+        student_id,
+        email,
+        phone,
+        email_delivery_status,
+        email_sent_at,
+        email_error_message,
+        created_at
+      FROM registrations
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [registrationId]
+  );
+
+  return rows[0] || null;
+}
+
+async function updateRegistrationEmailStatus(registrationId, status, errorMessage = null) {
+  const emailSentAt = status === EMAIL_STATUS.SENT ? new Date() : null;
+
+  await pool.query(
+    `
+      UPDATE registrations
+      SET email_delivery_status = ?,
+          email_sent_at = ?,
+          email_error_message = ?
+      WHERE id = ?
+    `,
+    [status, emailSentAt, errorMessage, registrationId]
+  );
 }
 
 function getDuplicateRegistrationMessage(duplicatedBy) {
@@ -325,6 +367,7 @@ async function buildRegistrationWorkbook(event, registrations) {
     { header: "MSSV", key: "student_id", minWidth: 14, maxWidth: 20 },
     { header: "Email", key: "email", minWidth: 24, maxWidth: 40 },
     { header: "Số điện thoại", key: "phone", minWidth: 16, maxWidth: 24 },
+    { header: "Trạng thái email", key: "email_delivery_status", minWidth: 18, maxWidth: 24 },
     { header: "Trạng thái check-in", key: "check_in_status", minWidth: 18, maxWidth: 24 },
     { header: "Thời gian check-in", key: "checked_in_at", minWidth: 22, maxWidth: 28 },
     { header: "Thời gian đăng ký", key: "created_at", minWidth: 22, maxWidth: 28 }
@@ -401,7 +444,7 @@ async function buildRegistrationWorkbook(event, registrations) {
     width: column.minWidth
   }));
 
-  sheet.mergeCells("A1:I1");
+  sheet.mergeCells("A1:J1");
   sheet.getCell("A1").value = `DANH SÁCH ĐĂNG KÝ - ${event.title}`;
   sheet.getCell("A1").font = { size: 16, bold: true };
   sheet.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
@@ -438,6 +481,7 @@ async function buildRegistrationWorkbook(event, registrations) {
       student_id: registration.student_id,
       email: registration.email,
       phone: registration.phone || "",
+      email_delivery_status: registration.email_delivery_status || EMAIL_STATUS.PENDING,
       check_in_status: registration.checked_in_at ? "Đã check-in" : "Chưa check-in",
       checked_in_at: formatDateTimeText(registration.checked_in_at),
       created_at: formatDateTimeText(registration.created_at)
@@ -452,6 +496,7 @@ async function buildRegistrationWorkbook(event, registrations) {
       student_id: "",
       email: "",
       phone: "",
+      email_delivery_status: "",
       check_in_status: "",
       checked_in_at: "",
       created_at: ""
@@ -625,7 +670,6 @@ app.get("/api/events/:id/registrations", async (req, res) => {
     });
   }
 });
-
 
 app.get("/api/events/:id/registrations/search", async (req, res) => {
   try {
@@ -934,10 +978,34 @@ app.post("/api/registrations", async (req, res) => {
       ]
     );
 
+    const createdRegistration = await findRegistrationById(result.insertId);
+    let emailDeliveryStatus = EMAIL_STATUS.PENDING;
+    let emailErrorMessage = null;
+
+    try {
+      await sendConfirmationEmail({
+        event,
+        registration: createdRegistration
+      });
+      emailDeliveryStatus = EMAIL_STATUS.SENT;
+      await updateRegistrationEmailStatus(result.insertId, emailDeliveryStatus, null);
+    } catch (emailError) {
+      emailDeliveryStatus = EMAIL_STATUS.FAILED;
+      emailErrorMessage = emailError.message;
+      await updateRegistrationEmailStatus(result.insertId, emailDeliveryStatus, emailErrorMessage);
+    }
+
+    const latestRegistration = await findRegistrationById(result.insertId);
+
     return res.status(201).json({
-      message: "Đăng ký tham gia sự kiện thành công.",
+      message:
+        emailDeliveryStatus === EMAIL_STATUS.SENT
+          ? "Đăng ký tham gia sự kiện thành công và đã gửi email xác nhận."
+          : "Đăng ký tham gia sự kiện thành công nhưng gửi email xác nhận thất bại.",
       registrationId: result.insertId,
-      eventId: registrationData.event_id
+      eventId: registrationData.event_id,
+      emailDeliveryStatus: latestRegistration?.email_delivery_status || emailDeliveryStatus,
+      emailErrorMessage: latestRegistration?.email_error_message || emailErrorMessage
     });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
@@ -970,4 +1038,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = app; app.js 
+module.exports = app;
