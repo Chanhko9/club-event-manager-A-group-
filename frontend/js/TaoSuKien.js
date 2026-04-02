@@ -237,6 +237,9 @@ function renderEvents(events) {
             <a class="register-link" href="./FormDangKy.html?eventId=${event.id}">
               Đăng ký tham gia
             </a>
+            <a class="register-link secondary-link" href="./DanhSachDangKy.html?eventId=${event.id}">
+              Check-in thủ công
+            </a>
             <button type="button" class="secondary-button view-registrations-button" data-event-id="${event.id}">
               ${viewLabel}
             </button>
