@@ -17,9 +17,9 @@ function resetData() {
   ];
 
   registrations = [
-    { id: 1, event_id: 1, full_name: "Nguyen Van A", student_id: "SV001", email: "sv001@example.com", phone: "0900000001", created_at: "2026-03-23 12:37:58" },
-    { id: 2, event_id: 1, full_name: "Tran Thi B", student_id: "SV002", email: "sv002@example.com", phone: "0900000002", created_at: "2026-03-23 12:40:00" },
-    { id: 3, event_id: 2, full_name: "Le Van C", student_id: "SV003", email: "sv003@example.com", phone: "0900000003", created_at: "2026-03-23 12:45:00" }
+    { id: 1, event_id: 1, full_name: "Nguyen Van A", student_id: "SV001", email: "sv001@example.com", phone: "0900000001", checked_in_at: null, created_at: "2026-03-23 12:37:58" },
+    { id: 2, event_id: 1, full_name: "Tran Thi B", student_id: "SV002", email: "sv002@example.com", phone: "0900000002", checked_in_at: "2026-03-25 17:45:00", created_at: "2026-03-23 12:40:00" },
+    { id: 3, event_id: 2, full_name: "Le Van C", student_id: "SV003", email: "sv003@example.com", phone: "0900000003", checked_in_at: null, created_at: "2026-03-23 12:45:00" }
   ];
 }
 
@@ -46,16 +46,42 @@ const mockPool = {
       return [[duplicated ? clone({ id: duplicated.id, student_id: duplicated.student_id, email: duplicated.email }) : undefined].filter(Boolean)];
     }
 
+    if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("WHERE event_id = ? AND id = ?") && normalizedSql.includes("LIMIT 1")) {
+      const [eventId, registrationId] = params;
+      const registration = registrations.find((item) => item.event_id === Number(eventId) && item.id === Number(registrationId));
+      return [[registration ? clone({ ...registration, check_in_status: registration.checked_in_at ? "Đã check-in" : "Chưa check-in" }) : undefined].filter(Boolean)];
+    }
+
+    if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("WHERE event_id = ?") && normalizedSql.includes("LOWER(email) = LOWER(?)") && normalizedSql.includes("UPPER(student_id) = UPPER(?)") && normalizedSql.includes("ORDER BY id DESC") && params.length === 3) {
+      const [eventId, a, b] = params;
+      const registration = registrations.filter((item) => item.event_id === Number(eventId) && (item.email.toLowerCase() === String(a).toLowerCase() || item.student_id.toUpperCase() === String(b).toUpperCase())).sort((x, y) => y.id - x.id)[0];
+      return [[registration ? clone({ ...registration, check_in_status: registration.checked_in_at ? "Đã check-in" : "Chưa check-in" }) : undefined].filter(Boolean)];
+    }
+
+    if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("ORDER BY id DESC") && params.length === 4) {
+      const [eventId, registrationId, a, b] = params;
+      const registration = registrations.filter((item) => item.event_id === Number(eventId) && (item.id === Number(registrationId) || item.email.toLowerCase() === String(a).toLowerCase() || item.student_id.toUpperCase() === String(b).toUpperCase())).sort((x, y) => y.id - x.id)[0];
+      return [[registration ? clone({ ...registration, check_in_status: registration.checked_in_at ? "Đã check-in" : "Chưa check-in" }) : undefined].filter(Boolean)];
+    }
+
+    if (normalizedSql.includes("UPDATE registrations") && normalizedSql.includes("SET checked_in_at = NOW()")) {
+      const [eventId, registrationId] = params;
+      const registration = registrations.find((item) => item.event_id === Number(eventId) && item.id === Number(registrationId) && item.checked_in_at == null);
+      if (!registration) return [{ affectedRows: 0 }];
+      registration.checked_in_at = "2026-03-25 18:15:00";
+      return [{ affectedRows: 1 }];
+    }
+
     if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("ORDER BY created_at DESC, id DESC")) {
       return [registrations.filter((item) => item.event_id === Number(params[0])).sort((a, b) => {
         const timeDiff = new Date(b.created_at) - new Date(a.created_at);
         return timeDiff !== 0 ? timeDiff : b.id - a.id;
-      }).map((item) => clone(item))];
+      }).map((item) => clone({ ...item, check_in_status: item.checked_in_at ? "Đã check-in" : "Chưa check-in" }))];
     }
 
     if (normalizedSql.includes("INSERT INTO registrations")) {
       const [eventId, fullName, studentId, email, phone] = params;
-      const newRegistration = { id: registrations.length + 1, event_id: Number(eventId), full_name: fullName, student_id: studentId, email, phone, created_at: "2026-03-25 10:00:00" };
+      const newRegistration = { id: registrations.length + 1, event_id: Number(eventId), full_name: fullName, student_id: studentId, email, phone, checked_in_at: null, created_at: "2026-03-25 10:00:00" };
       registrations.push(newRegistration);
       return [{ insertId: newRegistration.id }];
     }
@@ -113,7 +139,7 @@ test("GET /api/events trả về danh sách sự kiện kèm registration_count"
   });
 });
 
-test("GET /api/events/:id/registrations trả về đúng danh sách theo sự kiện", async () => {
+test("GET /api/events/:id/registrations trả về đúng danh sách theo sự kiện và trạng thái check-in", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/events/1/registrations`);
     const data = await response.json();
@@ -121,6 +147,10 @@ test("GET /api/events/:id/registrations trả về đúng danh sách theo sự k
     assert.equal(data.event.id, 1);
     assert.equal(data.totalRegistrations, 2);
     assert.deepEqual(data.registrations.map((item) => item.full_name), ["Tran Thi B", "Nguyen Van A"]);
+    assert.equal(data.registrations[0].check_in_status, "Đã check-in");
+    assert.equal(data.registrations[0].checked_in_at, "2026-03-25 17:45:00");
+    assert.equal(data.registrations[1].check_in_status, "Chưa check-in");
+    assert.equal(data.registrations[1].checked_in_at, null);
   });
 });
 
@@ -144,7 +174,7 @@ test("GET /api/events/:id/registrations trả về 404 nếu sự kiện không 
   });
 });
 
-test("POST /api/registrations vẫn đăng ký thành công và cập nhật danh sách", async () => {
+test("POST /api/registrations vẫn đăng ký thành công và mặc định chưa check-in", async () => {
   await withServer(async (baseUrl) => {
     const createResponse = await fetch(`${baseUrl}/api/registrations`, {
       method: "POST",
@@ -160,5 +190,60 @@ test("POST /api/registrations vẫn đăng ký thành công và cập nhật dan
     assert.equal(listResponse.status, 200);
     assert.equal(listData.totalRegistrations, 1);
     assert.equal(listData.registrations[0].student_id, "SV010");
+    assert.equal(listData.registrations[0].check_in_status, "Chưa check-in");
+    assert.equal(listData.registrations[0].checked_in_at, null);
+  });
+});
+
+
+test("GET /api/events/:id/registrations/search tìm được theo email, MSSV hoặc mã đăng ký", async () => {
+  await withServer(async (baseUrl) => {
+    const byEmail = await fetch(`${baseUrl}/api/events/1/registrations/search?keyword=sv001@example.com`);
+    const emailData = await byEmail.json();
+    assert.equal(byEmail.status, 200);
+    assert.equal(emailData.registration.id, 1);
+    assert.equal(emailData.registration.registration_code, "DK-0001");
+    assert.equal(emailData.registration.is_checked_in, false);
+
+    const byStudentId = await fetch(`${baseUrl}/api/events/1/registrations/search?keyword=sv002`);
+    const studentData = await byStudentId.json();
+    assert.equal(byStudentId.status, 200);
+    assert.equal(studentData.registration.id, 2);
+    assert.equal(studentData.registration.is_checked_in, true);
+
+    const byCode = await fetch(`${baseUrl}/api/events/1/registrations/search?keyword=DK-0001`);
+    const codeData = await byCode.json();
+    assert.equal(byCode.status, 200);
+    assert.equal(codeData.registration.id, 1);
+  });
+});
+
+test("POST /api/events/:id/check-in/manual cập nhật thời gian check-in", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/events/1/check-in/manual`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ registration_id: 1 })
+    });
+    const data = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(data.registration.id, 1);
+    assert.equal(data.registration.is_checked_in, true);
+    assert.equal(data.registration.check_in_status, "Đã check-in");
+    assert.equal(data.registration.checked_in_at, "2026-03-25 18:15:00");
+  });
+});
+
+test("POST /api/events/:id/check-in/manual trả về 409 nếu đã check-in", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/events/1/check-in/manual`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ registration_id: 2 })
+    });
+    const data = await response.json();
+    assert.equal(response.status, 409);
+    assert.equal(data.registration.id, 2);
+    assert.equal(data.registration.is_checked_in, true);
   });
 });

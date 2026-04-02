@@ -13,8 +13,8 @@
         <p class="hero-badge">Club Event Manager</p>
         <h1>Danh sách người đăng ký sự kiện</h1>
         <p class="hero-text">
-          Theo dõi số lượng người tham gia, xem nhanh thông tin cơ bản của từng lượt đăng ký
-          và chuyển đổi giữa các sự kiện ngay trên cùng một màn hình quản trị.
+          Theo dõi số lượng người tham gia, tra cứu nhanh theo từng sự kiện và check-in thủ công
+          bằng mã đăng ký, email hoặc MSSV ngay trên màn hình quản trị.
         </p>
 
         <div class="stat-grid">
@@ -64,6 +64,39 @@
         Chưa có sự kiện nào để hiển thị.
       </div>
 
+      <section class="checkin-panel">
+        <div class="checkin-panel-header">
+          <div>
+            <p class="section-tag">Check-in thủ công</p>
+            <h2>Check-in bằng mã đăng ký / email / MSSV</h2>
+            <p class="section-text">
+              Khi người tham gia không mở được QR Code, ban tổ chức có thể tìm đúng hồ sơ đăng ký
+              rồi xác nhận check-in thủ công ngay trên hệ thống.
+            </p>
+          </div>
+        </div>
+
+        <form id="manual-checkin-form" class="manual-checkin-form">
+          <div class="form-group manual-checkin-input-group">
+            <label for="manual-checkin-keyword">Từ khóa tìm kiếm</label>
+            <div class="input-with-button">
+              <input
+                id="manual-checkin-keyword"
+                name="manual-checkin-keyword"
+                type="text"
+                placeholder="Ví dụ: sv001@example.com, SV001"
+                autocomplete="off"
+              />
+              <button type="submit" class="primary-btn compact-btn">Tìm người tham gia</button>
+            </div>
+            <small>Hệ thống tìm kiếm chính xác theo mã đăng ký, email hoặc MSSV của người tham gia.</small>
+          </div>
+        </form>
+
+        <div id="manual-checkin-message" class="form-message" aria-live="polite"></div>
+        <div id="manual-checkin-result" class="manual-checkin-result hidden"></div>
+      </section>
+
       <div class="section-divider">
         <span>Danh sách người đăng ký</span>
       </div>
@@ -82,10 +115,13 @@
           <thead>
             <tr>
               <th>STT</th>
+              <th>Mã ĐK</th>
               <th>Họ và tên</th>
               <th>MSSV</th>
               <th>Email</th>
               <th>Số điện thoại</th>
+              <th>Trạng thái</th>
+              <th>Thời gian check-in</th>
               <th>Thời gian đăng ký</th>
             </tr>
           </thead>
@@ -95,6 +131,7 @@
     </section>
   </main>
 
+  <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
   <script src="./js/DanhSachDangKy.js"></script>
 </body>
 </html>
