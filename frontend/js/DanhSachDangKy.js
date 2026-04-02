@@ -29,6 +29,7 @@ const notCheckedInSummaryEl = document.getElementById("not-checked-in-summary");
 
 let eventsData = [];
 let currentRegistrations = [];
+let currentTotalRegistrations = 0;
 let currentEvent = null;
 
 function escapeHtml(value) {
@@ -170,28 +171,6 @@ function toggleListState(hasData) {
   tableWrapperEl.classList.toggle("hidden", !hasData);
 }
 
-function getFilteredRegistrations() {
-  const keyword = String(searchInputEl.value || "").trim().toLowerCase();
-  const statusFilter = checkinFilterEl.value;
-
-  return currentRegistrations.filter((registration) => {
-    const matchesKeyword = !keyword || [
-      registration.full_name,
-      registration.student_id,
-      registration.email,
-      registration.phone
-    ].some((value) => String(value || "").toLowerCase().includes(keyword));
-
-    const isCheckedIn = Boolean(registration.checked_in_at);
-    const matchesStatus =
-      statusFilter === "all"
-      || (statusFilter === "checked_in" && isCheckedIn)
-      || (statusFilter === "not_checked_in" && !isCheckedIn);
-
-    return matchesKeyword && matchesStatus;
-  });
-}
-
 function updateRegistrationView() {
   if (!currentEvent) {
     updateSummary([]);
@@ -202,21 +181,20 @@ function updateRegistrationView() {
   }
 
   updateSummary(currentRegistrations);
-  const filteredRegistrations = getFilteredRegistrations();
-  renderRegistrations(filteredRegistrations);
-  toggleListState(filteredRegistrations.length > 0);
+  renderRegistrations(currentRegistrations);
+  toggleListState(currentRegistrations.length > 0);
 
-  if (!currentRegistrations.length) {
+  if (currentTotalRegistrations === 0) {
     registrationStatusEl.textContent = "Sự kiện này chưa có người đăng ký.";
     return;
   }
 
-  if (!filteredRegistrations.length) {
+  if (currentRegistrations.length === 0) {
     registrationStatusEl.textContent = "Không có người đăng ký phù hợp với bộ lọc hiện tại.";
     return;
   }
 
-  registrationStatusEl.textContent = `Đang hiển thị ${filteredRegistrations.length}/${currentRegistrations.length} người đăng ký cho sự kiện đã chọn.`;
+  registrationStatusEl.textContent = `Đang hiển thị ${currentRegistrations.length}/${currentTotalRegistrations} người đăng ký cho sự kiện đã chọn.`;
 }
 
 async function loadEvents() {
@@ -230,8 +208,16 @@ async function loadEvents() {
   return Array.isArray(result) ? result : [];
 }
 
-async function loadRegistrationsByEvent(eventId) {
-  const response = await fetch(`${API_BASE_URL}/events/${eventId}/registrations`);
+async function loadRegistrationsByEvent(eventId, searchQuery = "", checkin = "all") {
+  const url = new URL(`${API_BASE_URL}/events/${eventId}/registrations`);
+  if (searchQuery) {
+    url.searchParams.set("q", searchQuery.trim());
+  }
+  if (checkin && checkin !== "all") {
+    url.searchParams.set("checkin", checkin);
+  }
+
+  const response = await fetch(url.toString());
   const result = await readJsonSafely(response);
 
   if (!response.ok) {
@@ -258,6 +244,7 @@ async function handleEventChange(eventId) {
 
   if (!currentEvent || !eventId) {
     currentRegistrations = [];
+    currentTotalRegistrations = 0;
     renderSelectedEventInfo(null);
     registrationStatusEl.textContent = "Chưa có sự kiện để xem danh sách đăng ký.";
     registrationTableBodyEl.innerHTML = "";
@@ -277,8 +264,9 @@ async function handleEventChange(eventId) {
   });
 
   try {
-    const result = await loadRegistrationsByEvent(eventId);
+    const result = await loadRegistrationsByEvent(eventId, String(searchInputEl.value || ""), checkinFilterEl.value);
     currentRegistrations = Array.isArray(result.registrations) ? result.registrations : [];
+    currentTotalRegistrations = Number(result.totalRegistrations || 0);
 
     const registrationCount = Number(result.totalRegistrations || 0);
     currentEvent.registration_count = registrationCount;
@@ -294,6 +282,7 @@ async function handleEventChange(eventId) {
     updateQueryString(eventId);
   } catch (error) {
     currentRegistrations = [];
+    currentTotalRegistrations = 0;
     registrationTableBodyEl.innerHTML = "";
     toggleListState(false);
     updateSummary([]);
@@ -353,12 +342,16 @@ eventSelectorEl.addEventListener("change", async (event) => {
   await handleEventChange(event.target.value);
 });
 
-searchInputEl.addEventListener("input", () => {
-  updateRegistrationView();
+searchInputEl.addEventListener("input", async () => {
+  clearPageMessage();
+  if (!currentEvent) return;
+  await handleEventChange(currentEvent.id);
 });
 
-checkinFilterEl.addEventListener("change", () => {
-  updateRegistrationView();
+checkinFilterEl.addEventListener("change", async () => {
+  clearPageMessage();
+  if (!currentEvent) return;
+  await handleEventChange(currentEvent.id);
 });
 
 initializePage();
