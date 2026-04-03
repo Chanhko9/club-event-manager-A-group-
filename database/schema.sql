@@ -17,7 +17,6 @@ CREATE TABLE IF NOT EXISTS registrations (
     student_id VARCHAR(50) NOT NULL,
     email VARCHAR(255) NOT NULL,
     phone VARCHAR(20),
-    checked_in_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_registrations_event
         FOREIGN KEY (event_id) REFERENCES events(id)

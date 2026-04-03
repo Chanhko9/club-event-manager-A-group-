@@ -270,7 +270,27 @@ async function findDuplicateRegistration({ event_id, student_id, email }) {
   };
 }
 
-async function getRegistrationsByEventId(eventId) {
+async function getRegistrationsByEventId(eventId, options = {}) {
+  const { q, checkin } = options;
+  const normalizedQuery = normalizeText(q).toLowerCase();
+
+  const whereClauses = ["event_id = ?"];
+  const queryParams = [eventId];
+
+  if (checkin === "checked_in") {
+    whereClauses.push("checked_in_at IS NOT NULL");
+  } else if (checkin === "not_checked_in") {
+    whereClauses.push("checked_in_at IS NULL");
+  }
+
+  if (normalizedQuery) {
+    whereClauses.push(
+      `(LOWER(full_name) LIKE ? OR LOWER(student_id) LIKE ? OR LOWER(email) LIKE ? OR LOWER(phone) LIKE ?)`
+    );
+    const likePattern = `%${normalizedQuery}%`;
+    queryParams.push(likePattern, likePattern, likePattern, likePattern);
+  }
+
   const [rows] = await pool.query(
     `
       SELECT
@@ -290,10 +310,10 @@ async function getRegistrationsByEventId(eventId) {
         END AS check_in_status,
         created_at
       FROM registrations
-      WHERE event_id = ?
+      WHERE ${whereClauses.join(" AND ")}
       ORDER BY created_at DESC, id DESC
     `,
-    [eventId]
+    queryParams
   );
 
   return rows;
@@ -655,12 +675,26 @@ app.get("/api/events/:id/registrations", async (req, res) => {
       });
     }
 
-    const registrations = await getRegistrationsByEventId(eventId);
+    const q = req.query.q || "";
+    const checkin = req.query.checkin || "all";
+
+    if (!["all", "checked_in", "not_checked_in"].includes(checkin)) {
+      return res.status(400).json({
+        message: "checkin filter không hợp lệ"
+      });
+    }
+
+    const registrations = await getRegistrationsByEventId(eventId, {
+      q,
+      checkin
+    });
+
+    const totalRegistrations = await getRegistrationsByEventId(eventId, { checkin: "all" }).then((rows) => rows.length);
 
     return res.json({
       event,
       registrations: registrations.map(mapRegistrationForClient),
-      totalRegistrations: registrations.length,
+      totalRegistrations,
       total: registrations.length
     });
   } catch (error) {
