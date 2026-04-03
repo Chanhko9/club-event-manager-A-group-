@@ -53,12 +53,33 @@
       <div id="page-message" class="form-message" aria-live="polite"></div>
 
       <div class="filter-panel">
-        <div class="form-group">
-          <label for="event-selector">Chọn sự kiện</label>
-          <select id="event-selector"></select>
-          <small>Danh sách sẽ tự động cập nhật theo sự kiện được chọn.</small>
-        </div>
-      </div>
+  <div class="form-group">
+    <label for="event-selector">Chọn sự kiện</label>
+    <select id="event-selector"></select>
+    <small>Danh sách sẽ tự động cập nhật theo sự kiện được chọn.</small>
+  </div>
+
+  <div class="form-group">
+    <label for="search-input">Tìm kiếm người đăng ký</label>
+    <input
+      type="text"
+      id="search-input"
+      placeholder="Nhập họ tên, MSSV, email hoặc số điện thoại"
+      autocomplete="off"
+    />
+    <small>Tìm kiếm theo thông tin người đăng ký trong sự kiện đang chọn.</small>
+  </div>
+
+  <div class="form-group">
+    <label for="checkin-filter">Lọc trạng thái check-in</label>
+    <select id="checkin-filter">
+      <option value="all">Tất cả</option>
+      <option value="checked_in">Đã check-in</option>
+      <option value="not_checked_in">Chưa check-in</option>
+    </select>
+    <small>Lọc danh sách theo trạng thái tham dự.</small>
+  </div>
+</div>
 
       <div id="selected-event-info" class="event-preview-card empty-card">
         Chưa có sự kiện nào để hiển thị.
