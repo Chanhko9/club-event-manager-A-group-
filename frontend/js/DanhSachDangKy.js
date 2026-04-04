@@ -477,8 +477,14 @@ async function handleEventChange(eventId) {
       checkinFilterEl?.value || "all"
     );
 
-    currentRegistrations = Array.isArray(result.registrations) ? result.registrations : [];
-    currentTotalRegistrations = Number(result.totalRegistrations || 0);
+    currentRegistrations = Array.isArray(result?.registrations)
+      ? result.registrations
+      : Array.isArray(result)
+        ? result
+        : [];
+    currentTotalRegistrations = Number(
+      result?.totalRegistrations ?? result?.total ?? currentRegistrations.length ?? 0
+    );
 
     selectedEvent.registration_count = currentTotalRegistrations;
     currentEvent = selectedEvent;

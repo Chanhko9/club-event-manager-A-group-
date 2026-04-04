@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gửi feedback sự kiện</title>
+  <link rel="stylesheet" href="./css/FeedbackSuKien.css" />
+</head>
+<body>
+  <main class="page-shell">
+    <section class="hero-card">
+      <div>
+        <p class="hero-badge">Feedback sự kiện</p>
+        <h1>Chia sẻ trải nghiệm của bạn sau sự kiện</h1>
+        <p class="hero-text">
+          Bạn chỉ có thể gửi feedback cho sự kiện mà mình đã đăng ký tham gia.
+          Hãy chọn đúng sự kiện và xác minh bằng MSSV + email đã dùng khi đăng ký.
+        </p>
+      </div>
+      <a class="back-link" href="./TaoSuKien.html">Quay lại quản lý sự kiện</a>
+    </section>
+
+    <section class="card">
+      <div class="section-header">
+        <div>
+          <p class="section-tag">Bước 1</p>
+          <h2>Xác minh người tham gia</h2>
+        </div>
+      </div>
+
+      <div id="page-message" class="form-message" aria-live="polite"></div>
+
+      <form id="access-form" class="stack-form">
+        <div class="form-group">
+          <label for="event_id">Chọn sự kiện</label>
+          <select id="event_id" name="event_id" required>
+            <option value="">-- Chọn sự kiện đã tham gia --</option>
+          </select>
+        </div>
+
+        <div id="selected-event-info" class="event-info"></div>
+
+        <div class="grid two-columns">
+          <div class="form-group">
+            <label for="student_id">Mã sinh viên</label>
+            <input id="student_id" name="student_id" type="text" placeholder="Ví dụ: SV001" required />
+          </div>
+          <div class="form-group">
+            <label for="email">Email đã dùng khi đăng ký</label>
+            <input id="email" name="email" type="email" placeholder="Ví dụ: sv001@example.com" required />
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="submit">Xác minh để mở form feedback</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="feedback-form-section" class="card hidden">
+      <div class="section-header">
+        <div>
+          <p class="section-tag">Bước 2</p>
+          <h2>Gửi feedback cho sự kiện</h2>
+          <p id="participant-info" class="section-text"></p>
+        </div>
+      </div>
+
+      <form id="feedback-form" class="stack-form">
+        <div class="form-group">
+          <label id="satisfaction-question-label" for="satisfaction_rating">Mức độ hài lòng</label>
+          <div class="rating-group" id="rating-group">
+            <label><input type="radio" name="satisfaction_rating" value="1" required /> 1</label>
+            <label><input type="radio" name="satisfaction_rating" value="2" required /> 2</label>
+            <label><input type="radio" name="satisfaction_rating" value="3" required /> 3</label>
+            <label><input type="radio" name="satisfaction_rating" value="4" required /> 4</label>
+            <label><input type="radio" name="satisfaction_rating" value="5" required /> 5</label>
+          </div>
+          <small>1 = Chưa hài lòng, 5 = Rất hài lòng</small>
+        </div>
+
+        <div class="form-group">
+          <label id="comment-question-label" for="comment">Nội dung góp ý</label>
+          <textarea id="comment" name="comment" rows="5" placeholder="Hãy chia sẻ điều bạn thích hoặc đề xuất cải thiện."></textarea>
+        </div>
+
+        <div class="actions">
+          <button id="submit-feedback-button" type="submit">Gửi feedback</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="submitted-section" class="card hidden">
+      <div class="section-header">
+        <div>
+          <p class="section-tag">Trạng thái</p>
+          <h2>Feedback đã được ghi nhận</h2>
+          <p id="submitted-message" class="section-text"></p>
+        </div>
+      </div>
+      <div id="submitted-summary" class="submitted-summary"></div>
+    </section>
+  </main>
+
+  <script src="./js/FeedbackSuKien.js"></script>
+</body>
+</html>
