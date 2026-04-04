@@ -215,6 +215,72 @@ function validateRegistrationPayload(payload) {
   };
 }
 
+
+function validateFeedbackFormPayload(payload) {
+  const satisfactionQuestion = normalizeText(payload.satisfaction_question) || "Mức độ hài lòng của bạn về sự kiện là gì?";
+  const commentQuestion = normalizeText(payload.comment_question) || "Bạn có góp ý gì để sự kiện sau tốt hơn không?";
+  const successMessage = normalizeText(payload.success_message) || "Cảm ơn bạn đã gửi phản hồi cho ban tổ chức.";
+  const isEnabled = Boolean(payload.is_enabled);
+
+  return {
+    isValid: true,
+    data: {
+      satisfaction_question: satisfactionQuestion,
+      comment_question: commentQuestion,
+      success_message: successMessage,
+      is_enabled: isEnabled ? 1 : 0
+    }
+  };
+}
+
+function validateFeedbackSubmissionPayload(payload) {
+  const eventId = parsePositiveInteger(payload.event_id);
+  const studentId = normalizeStudentId(payload.student_id);
+  const email = normalizeEmail(payload.email);
+  const comment = normalizeText(payload.comment);
+  const satisfactionRating = Number.parseInt(payload.satisfaction_rating, 10);
+
+  if (!eventId) {
+    return {
+      isValid: false,
+      message: "event_id is invalid"
+    };
+  }
+
+  if (!studentId || !email) {
+    return {
+      isValid: false,
+      message: "student_id và email là bắt buộc để xác minh người tham gia."
+    };
+  }
+
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailPattern.test(email)) {
+    return {
+      isValid: false,
+      message: "email is invalid"
+    };
+  }
+
+  if (!Number.isInteger(satisfactionRating) || satisfactionRating < 1 || satisfactionRating > 5) {
+    return {
+      isValid: false,
+      message: "satisfaction_rating phải nằm trong khoảng từ 1 đến 5."
+    };
+  }
+
+  return {
+    isValid: true,
+    data: {
+      event_id: eventId,
+      student_id: studentId,
+      email,
+      satisfaction_rating: satisfactionRating,
+      comment: comment || null
+    }
+  };
+}
+
 function escapeFileName(value) {
   return String(value ?? "su-kien")
     .normalize("NFD")
@@ -243,6 +309,208 @@ async function findEventById(eventId) {
   );
 
   return rows[0] || null;
+}
+
+async function ensureFeedbackTables() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS feedback_forms (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      event_id INT NOT NULL UNIQUE,
+      satisfaction_question VARCHAR(255) NOT NULL DEFAULT 'Mức độ hài lòng của bạn về sự kiện là gì?',
+      comment_question TEXT NOT NULL,
+      success_message TEXT NOT NULL,
+      is_enabled TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_feedback_forms_event
+        FOREIGN KEY (event_id) REFERENCES events(id)
+        ON DELETE CASCADE
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS feedback_responses (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      feedback_form_id INT NOT NULL,
+      event_id INT NOT NULL,
+      registration_id INT NOT NULL,
+      satisfaction_rating TINYINT NOT NULL,
+      comment TEXT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_feedback_responses_form
+        FOREIGN KEY (feedback_form_id) REFERENCES feedback_forms(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_feedback_responses_event
+        FOREIGN KEY (event_id) REFERENCES events(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_feedback_responses_registration
+        FOREIGN KEY (registration_id) REFERENCES registrations(id)
+        ON DELETE CASCADE,
+      CONSTRAINT uq_feedback_response UNIQUE (event_id, registration_id)
+    )
+  `);
+}
+
+function mapFeedbackFormForClient(form) {
+  if (!form) {
+    return {
+      satisfaction_question: "Mức độ hài lòng của bạn về sự kiện là gì?",
+      comment_question: "Bạn có góp ý gì để sự kiện sau tốt hơn không?",
+      success_message: "Cảm ơn bạn đã gửi phản hồi cho ban tổ chức.",
+      is_enabled: false,
+      response_count: 0
+    };
+  }
+
+  return {
+    ...form,
+    is_enabled: Boolean(form.is_enabled),
+    response_count: Number(form.response_count || 0)
+  };
+}
+
+async function findFeedbackFormByEventId(eventId) {
+  const [rows] = await pool.query(
+    `
+      SELECT
+        ff.id,
+        ff.event_id,
+        ff.satisfaction_question,
+        ff.comment_question,
+        ff.success_message,
+        ff.is_enabled,
+        ff.created_at,
+        ff.updated_at,
+        (
+          SELECT COUNT(*)
+          FROM feedback_responses fr
+          WHERE fr.event_id = ff.event_id
+        ) AS response_count
+      FROM feedback_forms ff
+      WHERE ff.event_id = ?
+      LIMIT 1
+    `,
+    [eventId]
+  );
+
+  return rows[0] || null;
+}
+
+async function upsertFeedbackForm(eventId, payload) {
+  const existingForm = await findFeedbackFormByEventId(eventId);
+
+  if (existingForm) {
+    await pool.query(
+      `
+        UPDATE feedback_forms
+        SET satisfaction_question = ?,
+            comment_question = ?,
+            success_message = ?,
+            is_enabled = ?
+        WHERE event_id = ?
+      `,
+      [
+        payload.satisfaction_question,
+        payload.comment_question,
+        payload.success_message,
+        payload.is_enabled,
+        eventId
+      ]
+    );
+  } else {
+    await pool.query(
+      `
+        INSERT INTO feedback_forms (
+          event_id,
+          satisfaction_question,
+          comment_question,
+          success_message,
+          is_enabled
+        )
+        VALUES (?, ?, ?, ?, ?)
+      `,
+      [
+        eventId,
+        payload.satisfaction_question,
+        payload.comment_question,
+        payload.success_message,
+        payload.is_enabled
+      ]
+    );
+  }
+
+  return findFeedbackFormByEventId(eventId);
+}
+
+async function findFeedbackParticipant(eventId, studentId, email) {
+  const [rows] = await pool.query(
+    `
+      SELECT
+        id,
+        event_id,
+        full_name,
+        student_id,
+        email,
+        phone,
+        checked_in_at,
+        created_at
+      FROM registrations
+      WHERE event_id = ?
+        AND UPPER(student_id) = UPPER(?)
+        AND LOWER(email) = LOWER(?)
+      ORDER BY id DESC
+      LIMIT 1
+    `,
+    [eventId, studentId, email]
+  );
+
+  return rows[0] || null;
+}
+
+async function findFeedbackResponse(eventId, registrationId) {
+  const [rows] = await pool.query(
+    `
+      SELECT
+        fr.id,
+        fr.feedback_form_id,
+        fr.event_id,
+        fr.registration_id,
+        fr.satisfaction_rating,
+        fr.comment,
+        fr.created_at
+      FROM feedback_responses fr
+      WHERE fr.event_id = ? AND fr.registration_id = ?
+      LIMIT 1
+    `,
+    [eventId, registrationId]
+  );
+
+  return rows[0] || null;
+}
+
+async function getFeedbackResponsesByEventId(eventId) {
+  const [rows] = await pool.query(
+    `
+      SELECT
+        fr.id,
+        fr.feedback_form_id,
+        fr.event_id,
+        fr.registration_id,
+        fr.satisfaction_rating,
+        fr.comment,
+        fr.created_at,
+        r.full_name,
+        r.student_id,
+        r.email
+      FROM feedback_responses fr
+      INNER JOIN registrations r ON r.id = fr.registration_id
+      WHERE fr.event_id = ?
+      ORDER BY fr.created_at DESC, fr.id DESC
+    `,
+    [eventId]
+  );
+
+  return rows;
 }
 
 async function findDuplicateRegistration({ event_id, student_id, email }) {
@@ -969,6 +1237,237 @@ app.delete("/api/events/:id", async (req, res) => {
   }
 });
 
+
+app.get("/api/events/:id/feedback-form", async (req, res) => {
+  try {
+    const eventId = parsePositiveInteger(req.params.id);
+
+    if (!eventId) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    let feedbackForm = await findFeedbackFormByEventId(eventId);
+    if (!feedbackForm) {
+      feedbackForm = await upsertFeedbackForm(eventId, {
+        satisfaction_question: "Mức độ hài lòng của bạn về sự kiện là gì?",
+        comment_question: "Bạn có góp ý gì để sự kiện sau tốt hơn không?",
+        success_message: "Cảm ơn bạn đã gửi phản hồi cho ban tổ chức.",
+        is_enabled: 0
+      });
+    }
+
+    const feedbackResponses = await getFeedbackResponsesByEventId(eventId);
+
+    return res.json({
+      event,
+      feedbackForm: mapFeedbackFormForClient(feedbackForm),
+      feedbackResponses
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể tải cấu hình feedback",
+      error: error.message
+    });
+  }
+});
+
+app.put("/api/events/:id/feedback-form", async (req, res) => {
+  try {
+    const eventId = parsePositiveInteger(req.params.id);
+
+    if (!eventId) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    const validation = validateFeedbackFormPayload(req.body);
+    if (!validation.isValid) {
+      return res.status(400).json({
+        message: validation.message
+      });
+    }
+
+    const feedbackForm = await upsertFeedbackForm(eventId, validation.data);
+
+    return res.json({
+      message: "Đã lưu cấu hình feedback cho sự kiện.",
+      event,
+      feedbackForm: mapFeedbackFormForClient(feedbackForm)
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể lưu cấu hình feedback",
+      error: error.message
+    });
+  }
+});
+
+app.post("/api/events/:id/feedback-access", async (req, res) => {
+  try {
+    const eventId = parsePositiveInteger(req.params.id);
+
+    if (!eventId) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    const form = await findFeedbackFormByEventId(eventId);
+    if (!form || !Boolean(form.is_enabled)) {
+      return res.status(403).json({
+        message: "Form feedback cho sự kiện này hiện chưa mở."
+      });
+    }
+
+    const studentId = normalizeStudentId(req.body?.student_id);
+    const email = normalizeEmail(req.body?.email);
+
+    if (!studentId || !email) {
+      return res.status(400).json({
+        message: "Vui lòng nhập MSSV và email đã dùng khi đăng ký sự kiện."
+      });
+    }
+
+    const participant = await findFeedbackParticipant(eventId, studentId, email);
+    if (!participant) {
+      return res.status(403).json({
+        message: "Bạn chỉ có thể gửi feedback cho sự kiện mà mình đã tham gia."
+      });
+    }
+
+    const existingResponse = await findFeedbackResponse(eventId, participant.id);
+
+    return res.json({
+      event,
+      participant: {
+        id: participant.id,
+        full_name: participant.full_name,
+        student_id: participant.student_id,
+        email: participant.email
+      },
+      feedbackForm: mapFeedbackFormForClient(form),
+      hasSubmitted: Boolean(existingResponse),
+      feedbackResponse: existingResponse
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể xác minh người tham gia",
+      error: error.message
+    });
+  }
+});
+
+app.post("/api/events/:id/feedback-responses", async (req, res) => {
+  try {
+    const routeEventId = parsePositiveInteger(req.params.id);
+    const validation = validateFeedbackSubmissionPayload({
+      ...req.body,
+      event_id: routeEventId
+    });
+
+    if (!validation.isValid) {
+      return res.status(400).json({
+        message: validation.message
+      });
+    }
+
+    const { event_id, student_id, email, satisfaction_rating, comment } = validation.data;
+    const event = await findEventById(event_id);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    const feedbackForm = await findFeedbackFormByEventId(event_id);
+    if (!feedbackForm || !Boolean(feedbackForm.is_enabled)) {
+      return res.status(403).json({
+        message: "Form feedback cho sự kiện này hiện chưa mở."
+      });
+    }
+
+    const participant = await findFeedbackParticipant(event_id, student_id, email);
+    if (!participant) {
+      return res.status(403).json({
+        message: "Bạn chỉ có thể gửi feedback cho sự kiện mà mình đã tham gia."
+      });
+    }
+
+    const existingResponse = await findFeedbackResponse(event_id, participant.id);
+    if (existingResponse) {
+      return res.status(409).json({
+        message: "Bạn đã gửi feedback cho sự kiện này rồi.",
+        feedbackResponse: existingResponse
+      });
+    }
+
+    const [result] = await pool.query(
+      `
+        INSERT INTO feedback_responses (
+          feedback_form_id,
+          event_id,
+          registration_id,
+          satisfaction_rating,
+          comment
+        )
+        VALUES (?, ?, ?, ?, ?)
+      `,
+      [feedbackForm.id, event_id, participant.id, satisfaction_rating, comment]
+    );
+
+    const savedResponse = await findFeedbackResponse(event_id, participant.id);
+
+    return res.status(201).json({
+      message: feedbackForm.success_message || "Cảm ơn bạn đã gửi phản hồi cho ban tổ chức.",
+      event,
+      participant: {
+        id: participant.id,
+        full_name: participant.full_name,
+        student_id: participant.student_id,
+        email: participant.email
+      },
+      feedbackResponse: savedResponse,
+      responseId: result.insertId
+    });
+  } catch (error) {
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        message: "Bạn đã gửi feedback cho sự kiện này rồi."
+      });
+    }
+
+    return res.status(500).json({
+      message: "Không thể gửi feedback",
+      error: error.message
+    });
+  }
+});
+
+
 app.post("/api/registrations", async (req, res) => {
   try {
     const validation = validateRegistrationPayload(req.body);
@@ -1065,11 +1564,24 @@ app.get("/", (req, res) => {
   res.redirect("/TaoSuKien.html");
 });
 
+const appReady = ensureFeedbackTables().catch((error) => {
+  console.error("Không thể khởi tạo bảng feedback:", error.message);
+  throw error;
+});
+
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Server is running at http://localhost:${PORT}`);
-    console.log(`Frontend: http://localhost:${PORT}/TaoSuKien.html`);
-  });
+  appReady
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Server is running at http://localhost:${PORT}`);
+        console.log(`Frontend: http://localhost:${PORT}/TaoSuKien.html`);
+      });
+    })
+    .catch((error) => {
+      console.error("Khởi động server thất bại:", error.message);
+      process.exit(1);
+    });
 }
 
 module.exports = app;
+module.exports.appReady = appReady;
