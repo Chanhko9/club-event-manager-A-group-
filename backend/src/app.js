@@ -37,6 +37,15 @@ function buildRegistrationCode(registrationId) {
   return `DK-${String(registrationId).padStart(4, "0")}`;
 }
 
+function buildQrPayload({ registrationId, eventId, studentId, email }) {
+  return JSON.stringify({
+    registrationId,
+    eventId,
+    studentId,
+    email
+  });
+}
+
 function normalizeManualCheckinKeyword(value) {
   return normalizeText(value);
 }
@@ -329,6 +338,9 @@ async function findRegistrationById(registrationId) {
         student_id,
         email,
         phone,
+        qr_code,
+        qr_payload,
+        qr_created_at,
         email_delivery_status,
         email_sent_at,
         email_error_message,
@@ -1012,6 +1024,24 @@ app.post("/api/registrations", async (req, res) => {
       ]
     );
 
+    const qrCode = buildRegistrationCode(result.insertId);
+
+    const qrPayload = buildQrPayload({
+      registrationId: result.insertId,
+      eventId: registrationData.event_id,
+      studentId: registrationData.student_id,
+      email: registrationData.email
+    });
+
+    await pool.query(
+      `
+        UPDATE registrations
+        SET qr_code = ?, qr_payload = ?, qr_created_at = NOW()
+        WHERE id = ?
+      `,
+      [qrCode, qrPayload, result.insertId]
+    );
+
     const createdRegistration = await findRegistrationById(result.insertId);
     let emailDeliveryStatus = EMAIL_STATUS.PENDING;
     let emailErrorMessage = null;
@@ -1039,7 +1069,9 @@ app.post("/api/registrations", async (req, res) => {
       registrationId: result.insertId,
       eventId: registrationData.event_id,
       emailDeliveryStatus: latestRegistration?.email_delivery_status || emailDeliveryStatus,
-      emailErrorMessage: latestRegistration?.email_error_message || emailErrorMessage
+      emailErrorMessage: latestRegistration?.email_error_message || emailErrorMessage,
+      qrCode: latestRegistration?.qr_code || qrCode,
+      qrPayload: latestRegistration?.qr_payload || qrPayload
     });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
