@@ -7,11 +7,19 @@ const ExcelJS = require("exceljs");
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 const pool = require("./config/db");
-const { EMAIL_STATUS, sendConfirmationEmail } = require("./services/confirmationEmailService");
+const {
+  EMAIL_STATUS,
+  buildQrPayload: buildEmailQrPayload,
+  sendConfirmationEmail
+} = require("./services/confirmationEmailService");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const frontendDir = path.resolve(__dirname, "../../frontend");
+const EMAIL_SEND_TYPES = Object.freeze({
+  INITIAL: "initial",
+  RESEND: "resend"
+});
 
 app.use(cors());
 app.use(express.json());
@@ -26,6 +34,10 @@ function normalizeEmail(value) {
 
 function normalizeStudentId(value) {
   return normalizeText(value).toUpperCase();
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
 }
 
 function parsePositiveInteger(value) {
@@ -54,6 +66,10 @@ function mapRegistrationForClient(registration) {
   return {
     ...registration,
     registration_code: buildRegistrationCode(registration.id),
+    qr_code: registration.qr_code || buildRegistrationCode(registration.id),
+    email_delivery_status: registration.email_delivery_status || EMAIL_STATUS.PENDING,
+    email_sent_at: registration.email_sent_at || null,
+    email_error_message: registration.email_error_message || null,
     is_checked_in: Boolean(registration.checked_in_at)
   };
 }
@@ -68,6 +84,12 @@ async function findRegistrationByIdForEvent(eventId, registrationId) {
         student_id,
         email,
         phone,
+        qr_code,
+        qr_payload,
+        qr_created_at,
+        email_delivery_status,
+        email_sent_at,
+        email_error_message,
         checked_in_at,
         CASE
           WHEN checked_in_at IS NULL THEN 'Chưa check-in'
@@ -204,8 +226,7 @@ function validateRegistrationPayload(payload) {
     };
   }
 
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailPattern.test(email)) {
+  if (!isValidEmail(email)) {
     return {
       isValid: false,
       message: "email is invalid"
@@ -263,8 +284,7 @@ function validateFeedbackSubmissionPayload(payload) {
     };
   }
 
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailPattern.test(email)) {
+  if (!isValidEmail(email)) {
     return {
       isValid: false,
       message: "email is invalid"
@@ -318,6 +338,50 @@ async function findEventById(eventId) {
   );
 
   return rows[0] || null;
+}
+
+async function ensureTableColumn(tableName, columnName, definition) {
+  const [rows] = await pool.query(`SHOW COLUMNS FROM ${tableName} LIKE ?`, [columnName]);
+  if (Array.isArray(rows) && rows.length > 0) {
+    return;
+  }
+
+  await pool.query(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+}
+
+async function ensureRegistrationEmailInfrastructure() {
+  await ensureTableColumn("registrations", "qr_code", "VARCHAR(50) NULL AFTER phone");
+  await ensureTableColumn("registrations", "qr_payload", "LONGTEXT NULL AFTER qr_code");
+  await ensureTableColumn("registrations", "qr_created_at", "DATETIME NULL AFTER qr_payload");
+  await ensureTableColumn(
+    "registrations",
+    "email_delivery_status",
+    `VARCHAR(30) NOT NULL DEFAULT '${EMAIL_STATUS.PENDING}' AFTER qr_created_at`
+  );
+  await ensureTableColumn("registrations", "email_sent_at", "DATETIME NULL AFTER email_delivery_status");
+  await ensureTableColumn("registrations", "email_error_message", "TEXT NULL AFTER email_sent_at");
+  await ensureTableColumn("registrations", "checked_in_at", "DATETIME NULL AFTER email_error_message");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS registration_email_logs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      registration_id INT NOT NULL,
+      event_id INT NOT NULL,
+      recipient_email VARCHAR(255) NOT NULL,
+      send_type VARCHAR(20) NOT NULL DEFAULT 'initial',
+      delivery_status VARCHAR(30) NOT NULL,
+      message_id VARCHAR(255) NULL,
+      error_message TEXT NULL,
+      qr_payload LONGTEXT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_registration_email_logs_registration
+        FOREIGN KEY (registration_id) REFERENCES registrations(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_registration_email_logs_event
+        FOREIGN KEY (event_id) REFERENCES events(id)
+        ON DELETE CASCADE
+    )
+  `);
 }
 
 async function ensureFeedbackTables() {
@@ -636,6 +700,154 @@ async function updateRegistrationEmailStatus(registrationId, status, errorMessag
     `,
     [status, emailSentAt, errorMessage, registrationId]
   );
+}
+
+function isLegacyQrPayload(value) {
+  const normalizedValue = normalizeText(value);
+  if (!normalizedValue || !normalizedValue.startsWith("{")) {
+    return false;
+  }
+
+  try {
+    const parsedValue = JSON.parse(normalizedValue);
+    return Boolean(parsedValue && typeof parsedValue === "object" && parsedValue.registrationId && parsedValue.eventId);
+  } catch (error) {
+    return false;
+  }
+}
+
+function resolveRegistrationQrPayload({ event, registration }) {
+  const storedPayload = normalizeText(registration.qr_payload);
+  if (storedPayload && !isLegacyQrPayload(storedPayload)) {
+    return storedPayload;
+  }
+
+  return buildEmailQrPayload({ event, registration });
+}
+
+async function persistRegistrationQrPayload(registrationId, qrPayload) {
+  await pool.query(
+    `
+      UPDATE registrations
+      SET qr_code = ?,
+          qr_payload = ?,
+          qr_created_at = NOW()
+      WHERE id = ?
+    `,
+    [buildRegistrationCode(registrationId), qrPayload, registrationId]
+  );
+}
+
+async function createRegistrationEmailLog({
+  registrationId,
+  eventId,
+  recipientEmail,
+  sendType,
+  deliveryStatus,
+  messageId = null,
+  errorMessage = null,
+  qrPayload = null
+}) {
+  const [result] = await pool.query(
+    `
+      INSERT INTO registration_email_logs (
+        registration_id,
+        event_id,
+        recipient_email,
+        send_type,
+        delivery_status,
+        message_id,
+        error_message,
+        qr_payload
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [registrationId, eventId, recipientEmail, sendType, deliveryStatus, messageId, errorMessage, qrPayload]
+  );
+
+  return {
+    id: result?.insertId || null,
+    registration_id: registrationId,
+    event_id: eventId,
+    recipient_email: recipientEmail,
+    send_type: sendType,
+    delivery_status: deliveryStatus,
+    message_id: messageId,
+    error_message: errorMessage,
+    qr_payload: qrPayload
+  };
+}
+
+async function deliverRegistrationConfirmationEmail({
+  event,
+  registration,
+  sendType = EMAIL_SEND_TYPES.INITIAL,
+  transporter
+}) {
+  const recipientEmail = normalizeEmail(registration.email);
+  const qrPayload = resolveRegistrationQrPayload({ event, registration });
+
+  await persistRegistrationQrPayload(registration.id, qrPayload);
+
+  if (!isValidEmail(recipientEmail)) {
+    const error = new Error("Email người đăng ký không hợp lệ.");
+    error.statusCode = 400;
+
+    await updateRegistrationEmailStatus(registration.id, EMAIL_STATUS.FAILED, error.message);
+    error.emailLog = await createRegistrationEmailLog({
+      registrationId: registration.id,
+      eventId: event.id,
+      recipientEmail: recipientEmail || normalizeText(registration.email),
+      sendType,
+      deliveryStatus: EMAIL_STATUS.FAILED,
+      errorMessage: error.message,
+      qrPayload
+    });
+
+    throw error;
+  }
+
+  try {
+    const emailResult = await sendConfirmationEmail({
+      event,
+      registration: {
+        ...registration,
+        email: recipientEmail
+      },
+      qrPayload,
+      transporter
+    });
+
+    await updateRegistrationEmailStatus(registration.id, EMAIL_STATUS.SENT, null);
+    const emailLog = await createRegistrationEmailLog({
+      registrationId: registration.id,
+      eventId: event.id,
+      recipientEmail,
+      sendType,
+      deliveryStatus: EMAIL_STATUS.SENT,
+      messageId: emailResult.messageId,
+      qrPayload: emailResult.qrPayload
+    });
+
+    return {
+      emailResult,
+      emailLog,
+      qrPayload: emailResult.qrPayload
+    };
+  } catch (emailError) {
+    await updateRegistrationEmailStatus(registration.id, EMAIL_STATUS.FAILED, emailError.message);
+    emailError.emailLog = await createRegistrationEmailLog({
+      registrationId: registration.id,
+      eventId: event.id,
+      recipientEmail,
+      sendType,
+      deliveryStatus: EMAIL_STATUS.FAILED,
+      errorMessage: emailError.message,
+      qrPayload
+    });
+    emailError.statusCode = emailError.statusCode || 502;
+    throw emailError;
+  }
 }
 
 function getDuplicateRegistrationMessage(duplicatedBy) {
@@ -1024,6 +1236,71 @@ app.get("/api/events/:id/registrations/search", async (req, res) => {
     return res.status(500).json({
       message: "Không thể tìm người đăng ký",
       error: error.message
+    });
+  }
+});
+
+app.post("/api/events/:eventId/registrations/:registrationId/resend-confirmation-email", async (req, res) => {
+  let registration = null;
+
+  try {
+    const eventId = parsePositiveInteger(req.params.eventId);
+    const registrationId = parsePositiveInteger(req.params.registrationId);
+
+    if (!eventId) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    if (!registrationId) {
+      return res.status(400).json({
+        message: "registration_id is invalid"
+      });
+    }
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    registration = await findRegistrationByIdForEvent(eventId, registrationId);
+    if (!registration) {
+      return res.status(404).json({
+        message: "Không tìm thấy người đăng ký cho sự kiện này"
+      });
+    }
+
+    const deliveryResult = await deliverRegistrationConfirmationEmail({
+      event,
+      registration,
+      sendType: EMAIL_SEND_TYPES.RESEND
+    });
+
+    const latestRegistration = await findRegistrationByIdForEvent(eventId, registrationId);
+
+    return res.json({
+      message: "Đã gửi lại email xác nhận thành công.",
+      registration: mapRegistrationForClient(latestRegistration || registration),
+      emailLog: deliveryResult.emailLog,
+      qrPayload: deliveryResult.qrPayload
+    });
+  } catch (error) {
+    const eventId = parsePositiveInteger(req.params.eventId);
+    const registrationId = parsePositiveInteger(req.params.registrationId);
+    const latestRegistration =
+      eventId && registrationId ? await findRegistrationByIdForEvent(eventId, registrationId).catch(() => null) : null;
+
+    return res.status(error.statusCode || 502).json({
+      message:
+        error.statusCode === 400
+          ? error.message
+          : "Gửi lại email xác nhận thất bại.",
+      error: error.message,
+      registration: latestRegistration ? mapRegistrationForClient(latestRegistration) : registration ? mapRegistrationForClient(registration) : null,
+      emailLog: error.emailLog || null
     });
   }
 });
@@ -1523,39 +1800,25 @@ app.post("/api/registrations", async (req, res) => {
       ]
     );
 
-    const qrCode = buildRegistrationCode(result.insertId);
-
-    const qrPayload = buildQrPayload({
-      registrationId: result.insertId,
-      eventId: registrationData.event_id,
-      studentId: registrationData.student_id,
-      email: registrationData.email
-    });
-
-    await pool.query(
-      `
-        UPDATE registrations
-        SET qr_code = ?, qr_payload = ?, qr_created_at = NOW()
-        WHERE id = ?
-      `,
-      [qrCode, qrPayload, result.insertId]
-    );
-
     const createdRegistration = await findRegistrationById(result.insertId);
     let emailDeliveryStatus = EMAIL_STATUS.PENDING;
     let emailErrorMessage = null;
+    let resolvedQrPayload = resolveRegistrationQrPayload({
+      event,
+      registration: createdRegistration
+    });
 
     try {
-      await sendConfirmationEmail({
+      const emailDeliveryResult = await deliverRegistrationConfirmationEmail({
         event,
-        registration: createdRegistration
+        registration: createdRegistration,
+        sendType: EMAIL_SEND_TYPES.INITIAL
       });
       emailDeliveryStatus = EMAIL_STATUS.SENT;
-      await updateRegistrationEmailStatus(result.insertId, emailDeliveryStatus, null);
+      resolvedQrPayload = emailDeliveryResult.qrPayload;
     } catch (emailError) {
       emailDeliveryStatus = EMAIL_STATUS.FAILED;
       emailErrorMessage = emailError.message;
-      await updateRegistrationEmailStatus(result.insertId, emailDeliveryStatus, emailErrorMessage);
     }
 
     const latestRegistration = await findRegistrationById(result.insertId);
@@ -1569,8 +1832,8 @@ app.post("/api/registrations", async (req, res) => {
       eventId: registrationData.event_id,
       emailDeliveryStatus: latestRegistration?.email_delivery_status || emailDeliveryStatus,
       emailErrorMessage: latestRegistration?.email_error_message || emailErrorMessage,
-      qrCode: latestRegistration?.qr_code || qrCode,
-      qrPayload: latestRegistration?.qr_payload || qrPayload
+      qrCode: latestRegistration?.qr_code || buildRegistrationCode(result.insertId),
+      qrPayload: latestRegistration?.qr_payload || resolvedQrPayload
     });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
@@ -1596,7 +1859,7 @@ app.get("/", (req, res) => {
   res.redirect("/TaoSuKien.html");
 });
 
-const appReady = ensureFeedbackTables().catch((error) => {
+const appReady = Promise.all([ensureRegistrationEmailInfrastructure(), ensureFeedbackTables()]).catch((error) => {
   console.error("Không thể khởi tạo bảng feedback:", error.message);
   throw error;
 });
