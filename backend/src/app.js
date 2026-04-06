@@ -64,6 +64,50 @@ function normalizeManualCheckinKeyword(value) {
   return normalizeText(value);
 }
 
+function parseScannedQrContent(value) {
+  const normalizedValue = normalizeText(value);
+  const parsedContent = {
+    raw: normalizedValue,
+    registrationId: null,
+    eventId: null
+  };
+
+  if (!normalizedValue) {
+    return parsedContent;
+  }
+
+  if (/^DK-(\d+)$/i.test(normalizedValue)) {
+    parsedContent.registrationId = parsePositiveInteger(normalizedValue.replace(/^DK-/i, ""));
+    return parsedContent;
+  }
+
+  if (normalizedValue.startsWith("{")) {
+    try {
+      const payload = JSON.parse(normalizedValue);
+      parsedContent.registrationId = parsePositiveInteger(payload?.registrationId);
+      parsedContent.eventId = parsePositiveInteger(payload?.eventId);
+      if (parsedContent.registrationId || parsedContent.eventId) {
+        return parsedContent;
+      }
+    } catch (error) {
+      // Ignore malformed JSON and continue with text-based parsing.
+    }
+  }
+
+  const registrationIdMatch = normalizedValue.match(/Ma\s*dang\s*ky\s*:\s*(\d+)/i);
+  const eventIdMatch = normalizedValue.match(/Ma\s*su\s*kien\s*:\s*(\d+)/i);
+
+  if (registrationIdMatch) {
+    parsedContent.registrationId = parsePositiveInteger(registrationIdMatch[1]);
+  }
+
+  if (eventIdMatch) {
+    parsedContent.eventId = parsePositiveInteger(eventIdMatch[1]);
+  }
+
+  return parsedContent;
+}
+
 function normalizeBaseUrl(value) {
   return String(value ?? "").trim().replace(/\/$/, "");
 }
@@ -710,6 +754,11 @@ async function findRegistrationById(registrationId) {
         email_delivery_status,
         email_sent_at,
         email_error_message,
+        checked_in_at,
+        CASE
+          WHEN checked_in_at IS NULL THEN 'Chưa check-in'
+          ELSE 'Đã check-in'
+        END AS check_in_status,
         created_at
       FROM registrations
       WHERE id = ?
@@ -719,6 +768,37 @@ async function findRegistrationById(registrationId) {
   );
 
   return rows[0] || null;
+}
+
+async function findRegistrationForQrScan(qrContent) {
+  const parsedQrContent = parseScannedQrContent(qrContent);
+
+  if (!parsedQrContent.registrationId) {
+    return {
+      registration: null,
+      parsedQrContent
+    };
+  }
+
+  const registration = await findRegistrationById(parsedQrContent.registrationId);
+
+  return {
+    registration,
+    parsedQrContent
+  };
+}
+
+async function markRegistrationAsCheckedIn(eventId, registrationId) {
+  await pool.query(
+    `
+      UPDATE registrations
+      SET checked_in_at = NOW()
+      WHERE event_id = ? AND id = ? AND checked_in_at IS NULL
+    `,
+    [eventId, registrationId]
+  );
+
+  return findRegistrationByIdForEvent(eventId, registrationId);
 }
 
 async function updateRegistrationEmailStatus(registrationId, status, errorMessage = null) {
@@ -1342,6 +1422,75 @@ app.post("/api/events/:eventId/registrations/:registrationId/resend-confirmation
       error: error.message,
       registration: latestRegistration ? mapRegistrationForClient(latestRegistration) : registration ? mapRegistrationForClient(registration) : null,
       emailLog: error.emailLog || null
+    });
+  }
+});
+
+app.post("/api/events/:id/check-in/qr", async (req, res) => {
+  try {
+    const eventId = parsePositiveInteger(req.params.id);
+    const qrContent = normalizeText(req.body?.qr_content || req.body?.qrContent || req.body?.value);
+
+    if (!eventId) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    if (!qrContent) {
+      return res.status(400).json({
+        message: "Vui lòng cung cấp nội dung QR để check-in."
+      });
+    }
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    const { registration, parsedQrContent } = await findRegistrationForQrScan(qrContent);
+
+    if (!registration) {
+      return res.status(404).json({
+        message: "QR không hợp lệ hoặc không tồn tại trong hệ thống.",
+        qrContent
+      });
+    }
+
+    if (parsedQrContent.eventId && Number(parsedQrContent.eventId) !== Number(registration.event_id)) {
+      return res.status(400).json({
+        message: "QR không hợp lệ cho người tham gia này.",
+        registration: mapRegistrationForClient(registration)
+      });
+    }
+
+    if (Number(registration.event_id) !== Number(eventId)) {
+      return res.status(409).json({
+        message: "QR thuộc sự kiện khác, không thể check-in cho sự kiện hiện tại.",
+        registration: mapRegistrationForClient(registration)
+      });
+    }
+
+    if (registration.checked_in_at) {
+      return res.status(409).json({
+        message: "Người tham gia này đã được check-in trước đó.",
+        registration: mapRegistrationForClient(registration)
+      });
+    }
+
+    const updatedRegistration = await markRegistrationAsCheckedIn(eventId, registration.id);
+
+    return res.json({
+      message: "Quét QR thành công. Đã cập nhật trạng thái check-in.",
+      event,
+      registration: mapRegistrationForClient(updatedRegistration)
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể check-in bằng QR",
+      error: error.message
     });
   }
 });

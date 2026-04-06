@@ -611,6 +611,75 @@ test("POST /api/events/:id/check-in/manual cập nhật thời gian check-in", a
   });
 });
 
+test("POST /api/events/:id/check-in/qr quét QR hợp lệ và cập nhật thời gian check-in", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/events/1/check-in/qr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        qr_content: JSON.stringify({ registrationId: 1, eventId: 1, studentId: "SV001", email: "sv001@example.com" })
+      })
+    });
+    const data = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(data.message, "Quét QR thành công. Đã cập nhật trạng thái check-in.");
+    assert.equal(data.registration.id, 1);
+    assert.equal(data.registration.is_checked_in, true);
+    assert.equal(data.registration.checked_in_at, "2026-03-25 18:15:00");
+  });
+});
+
+test("POST /api/events/:id/check-in/qr trả lỗi khi QR thuộc sự kiện khác", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/events/1/check-in/qr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        qr_content: buildMockQrPayload(findEvent(2), findRegistration(3))
+      })
+    });
+    const data = await response.json();
+
+    assert.equal(response.status, 409);
+    assert.equal(data.message, "QR thuộc sự kiện khác, không thể check-in cho sự kiện hiện tại.");
+    assert.equal(data.registration.id, 3);
+    assert.equal(data.registration.event_id, 2);
+  });
+});
+
+test("POST /api/events/:id/check-in/qr trả lỗi khi người tham gia đã check-in trước đó", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/events/1/check-in/qr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        qr_content: buildMockQrPayload(findEvent(1), findRegistration(2))
+      })
+    });
+    const data = await response.json();
+
+    assert.equal(response.status, 409);
+    assert.equal(data.message, "Người tham gia này đã được check-in trước đó.");
+    assert.equal(data.registration.id, 2);
+    assert.equal(data.registration.is_checked_in, true);
+  });
+});
+
+test("POST /api/events/:id/check-in/qr trả lỗi khi QR không hợp lệ hoặc không tồn tại", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/events/1/check-in/qr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ qr_content: "QR-KHONG-TON-TAI" })
+    });
+    const data = await response.json();
+
+    assert.equal(response.status, 404);
+    assert.equal(data.message, "QR không hợp lệ hoặc không tồn tại trong hệ thống.");
+  });
+});
+
 test("POST /api/registrations đăng ký thành công, gửi email xác nhận và lưu QR payload chuẩn", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/registrations`, {
