@@ -10,7 +10,9 @@ const pool = require("./config/db");
 const {
   EMAIL_STATUS,
   buildQrPayload: buildEmailQrPayload,
-  sendConfirmationEmail
+  sendConfirmationEmail,
+  sendFeedbackInvitationEmail,
+  createMailerTransport
 } = require("./services/confirmationEmailService");
 
 const app = express();
@@ -60,6 +62,29 @@ function buildQrPayload({ registrationId, eventId, studentId, email }) {
 
 function normalizeManualCheckinKeyword(value) {
   return normalizeText(value);
+}
+
+function normalizeBaseUrl(value) {
+  return String(value ?? "").trim().replace(/\/$/, "");
+}
+
+function resolvePublicBaseUrl(req) {
+  const configuredBaseUrl = normalizeBaseUrl(process.env.PUBLIC_APP_BASE_URL || process.env.FRONTEND_PUBLIC_URL);
+  if (configuredBaseUrl) {
+    return configuredBaseUrl;
+  }
+
+  const host = normalizeText(req.get("host"));
+  if (!host) {
+    return "http://localhost:5000";
+  }
+
+  return `${req.protocol}://${host}`;
+}
+
+function buildFeedbackFormUrl(req, eventId) {
+  const publicBaseUrl = resolvePublicBaseUrl(req);
+  return `${publicBaseUrl}/FeedbackSuKien.html?eventId=${eventId}`;
 }
 
 function mapRegistrationForClient(registration) {
@@ -584,6 +609,15 @@ async function getFeedbackResponsesByEventId(eventId) {
   );
 
   return rows;
+}
+
+async function getEventFeedbackSummary(eventId) {
+  const feedbackForm = await findFeedbackFormByEventId(eventId);
+
+  return {
+    feedback_enabled: Boolean(feedbackForm?.is_enabled),
+    feedback_response_count: Number(feedbackForm?.response_count || 0)
+  };
 }
 
 async function findDuplicateRegistration({ event_id, student_id, email }) {
@@ -1114,7 +1148,14 @@ app.get("/api/events", async (req, res) => {
       ORDER BY e.event_time ASC
     `);
 
-    res.json(rows);
+    const enrichedEvents = await Promise.all(
+      rows.map(async (event) => ({
+        ...event,
+        ...(await getEventFeedbackSummary(event.id))
+      }))
+    );
+
+    res.json(enrichedEvents);
   } catch (error) {
     res.status(500).json({
       message: "Failed to fetch events",
@@ -1603,6 +1644,103 @@ app.put("/api/events/:id/feedback-form", async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       message: "Không thể lưu cấu hình feedback",
+      error: error.message
+    });
+  }
+});
+
+app.post("/api/events/:id/send-feedback-links", async (req, res) => {
+  try {
+    const eventId = parsePositiveInteger(req.params.id);
+
+    if (!eventId) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    const feedbackForm = await findFeedbackFormByEventId(eventId);
+    if (!feedbackForm || !Boolean(feedbackForm.is_enabled)) {
+      return res.status(409).json({
+        message: "Vui lòng mở form feedback trước khi gửi link cho người tham gia."
+      });
+    }
+
+    const registrations = await getRegistrationsByEventId(eventId, { checkin: "all" });
+    if (!registrations.length) {
+      return res.status(404).json({
+        message: "Sự kiện chưa có người đăng ký để gửi link feedback."
+      });
+    }
+
+    const feedbackUrl = buildFeedbackFormUrl(req, eventId);
+    const transporter = createMailerTransport();
+
+    const deliveryResults = await Promise.allSettled(
+      registrations.map((registration) =>
+        sendFeedbackInvitationEmail({
+          event,
+          registration,
+          feedbackUrl,
+          transporter
+        })
+      )
+    );
+
+    const sent = [];
+    const failed = [];
+
+    deliveryResults.forEach((result, index) => {
+      const registration = registrations[index];
+      if (result.status === "fulfilled") {
+        sent.push({
+          registration_id: registration.id,
+          full_name: registration.full_name,
+          email: registration.email,
+          message_id: result.value?.messageId || null
+        });
+        return;
+      }
+
+      failed.push({
+        registration_id: registration.id,
+        full_name: registration.full_name,
+        email: registration.email,
+        error: result.reason?.message || "Gửi email thất bại."
+      });
+    });
+
+    const hasSent = sent.length > 0;
+    const hasFailed = failed.length > 0;
+    const statusCode = hasFailed && !hasSent ? 502 : 200;
+
+    let message = `Đã gửi link feedback cho ${sent.length}/${registrations.length} người tham gia.`;
+    if (hasFailed && hasSent) {
+      message = `Đã gửi link feedback cho ${sent.length}/${registrations.length} người tham gia. ${failed.length} email gửi thất bại.`;
+    } else if (hasFailed && !hasSent) {
+      message = "Không thể gửi email feedback cho người tham gia nào.";
+    }
+
+    return res.status(statusCode).json({
+      message,
+      event,
+      feedbackUrl,
+      totalRecipients: registrations.length,
+      sentCount: sent.length,
+      failedCount: failed.length,
+      sent,
+      failed
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể gửi link feedback qua email",
       error: error.message
     });
   }

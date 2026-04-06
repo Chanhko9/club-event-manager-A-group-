@@ -5,6 +5,8 @@ const path = require("node:path");
 let events;
 let registrations;
 let registrationEmailLogs;
+let feedbackForms;
+let feedbackResponses;
 let sentEmails;
 let forcedSendError;
 let registrationColumns;
@@ -97,6 +99,31 @@ function resetData() {
     }
   ];
 
+  feedbackForms = [
+    {
+      id: 1,
+      event_id: 1,
+      satisfaction_question: "Mức độ hài lòng của bạn về sự kiện là gì?",
+      comment_question: "Bạn có góp ý gì để sự kiện sau tốt hơn không?",
+      success_message: "Cảm ơn bạn đã gửi phản hồi cho ban tổ chức.",
+      is_enabled: 1,
+      created_at: "2026-03-25 20:00:00",
+      updated_at: "2026-03-25 20:00:00"
+    },
+    {
+      id: 2,
+      event_id: 2,
+      satisfaction_question: "Mức độ hài lòng của bạn về sự kiện là gì?",
+      comment_question: "Bạn có góp ý gì để sự kiện sau tốt hơn không?",
+      success_message: "Cảm ơn bạn đã gửi phản hồi cho ban tổ chức.",
+      is_enabled: 0,
+      created_at: "2026-03-28 16:00:00",
+      updated_at: "2026-03-28 16:00:00"
+    }
+  ];
+
+  feedbackResponses = [];
+
   registrationEmailLogs = [];
   sentEmails = [];
   forcedSendError = null;
@@ -132,6 +159,14 @@ function findRegistration(registrationId) {
 
 function findRegistrationForEvent(eventId, registrationId) {
   return registrations.find((item) => item.event_id === Number(eventId) && item.id === Number(registrationId)) || null;
+}
+
+function findFeedbackForm(eventId) {
+  return feedbackForms.find((item) => item.event_id === Number(eventId)) || null;
+}
+
+function findFeedbackResponse(eventId, registrationId) {
+  return feedbackResponses.find((item) => item.event_id === Number(eventId) && item.registration_id === Number(registrationId)) || null;
 }
 
 function normalizeSql(sql) {
@@ -174,6 +209,89 @@ const mockPool = {
       return [{ warningStatus: 0 }];
     }
 
+    if (normalizedSql.includes("FROM feedback_forms ff") && normalizedSql.includes("WHERE ff.event_id = ?") && normalizedSql.includes("response_count")) {
+      const eventId = Number(params[0]);
+      const form = findFeedbackForm(eventId);
+      if (!form) {
+        return [[]];
+      }
+      return [[{
+        ...clone(form),
+        response_count: feedbackResponses.filter((item) => item.event_id === eventId).length
+      }]];
+    }
+
+    if (normalizedSql.startsWith("UPDATE feedback_forms SET satisfaction_question = ?")) {
+      const [satisfactionQuestion, commentQuestion, successMessage, isEnabled, eventId] = params;
+      const form = findFeedbackForm(eventId);
+      if (!form) return [{ affectedRows: 0 }];
+      form.satisfaction_question = satisfactionQuestion;
+      form.comment_question = commentQuestion;
+      form.success_message = successMessage;
+      form.is_enabled = Number(isEnabled);
+      form.updated_at = "2026-03-29 10:00:00";
+      return [{ affectedRows: 1 }];
+    }
+
+    if (normalizedSql.startsWith("INSERT INTO feedback_forms (")) {
+      const [eventId, satisfactionQuestion, commentQuestion, successMessage, isEnabled] = params;
+      const newForm = {
+        id: feedbackForms.length + 1,
+        event_id: Number(eventId),
+        satisfaction_question: satisfactionQuestion,
+        comment_question: commentQuestion,
+        success_message: successMessage,
+        is_enabled: Number(isEnabled),
+        created_at: "2026-03-29 10:00:00",
+        updated_at: "2026-03-29 10:00:00"
+      };
+      feedbackForms.push(newForm);
+      return [{ insertId: newForm.id }];
+    }
+
+    if (normalizedSql.includes("FROM feedback_responses fr") && normalizedSql.includes("INNER JOIN registrations r ON r.id = fr.registration_id")) {
+      const eventId = Number(params[0]);
+      const rows = feedbackResponses
+        .filter((item) => item.event_id === eventId)
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at) || b.id - a.id)
+        .map((item) => {
+          const registration = findRegistration(item.registration_id);
+          return {
+            ...clone(item),
+            full_name: registration?.full_name || "",
+            student_id: registration?.student_id || "",
+            email: registration?.email || ""
+          };
+        });
+      return [rows];
+    }
+
+    if (normalizedSql.includes("FROM feedback_responses fr") && normalizedSql.includes("WHERE fr.event_id = ? AND fr.registration_id = ?") && normalizedSql.includes("LIMIT 1")) {
+      const response = findFeedbackResponse(params[0], params[1]);
+      return [[response ? clone(response) : undefined].filter(Boolean)];
+    }
+
+    if (normalizedSql.startsWith("INSERT INTO feedback_responses (")) {
+      const [feedbackFormId, eventId, registrationId, satisfactionRating, comment] = params;
+      const existing = findFeedbackResponse(eventId, registrationId);
+      if (existing) {
+        const error = new Error("Duplicate feedback response");
+        error.code = "ER_DUP_ENTRY";
+        throw error;
+      }
+      const newResponse = {
+        id: feedbackResponses.length + 1,
+        feedback_form_id: Number(feedbackFormId),
+        event_id: Number(eventId),
+        registration_id: Number(registrationId),
+        satisfaction_rating: Number(satisfactionRating),
+        comment: comment,
+        created_at: `2026-03-29 10:05:${String(feedbackResponses.length + 1).padStart(2, "0")}`
+      };
+      feedbackResponses.push(newResponse);
+      return [{ insertId: newResponse.id }];
+    }
+
     if (normalizedSql.includes("FROM events e") && normalizedSql.includes("registration_count")) {
       return [clone(events)
         .sort((a, b) => new Date(a.event_time) - new Date(b.event_time))
@@ -204,13 +322,33 @@ const mockPool = {
       return [[registration ? clone(registration) : undefined].filter(Boolean)];
     }
 
-    if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("LOWER(email) = LOWER(?)") && normalizedSql.includes("UPPER(student_id) = UPPER(?)") && normalizedSql.includes("ORDER BY id DESC") && params.length === 3) {
-      const [eventId, email, studentId] = params;
+    if (normalizedSql.includes("FROM registrations")
+      && normalizedSql.includes("AND UPPER(student_id) = UPPER(?)")
+      && normalizedSql.includes("AND LOWER(email) = LOWER(?)")
+      && normalizedSql.includes("ORDER BY id DESC")
+      && params.length === 3) {
+      const [eventId, studentId, email] = params;
       const registration = registrations
-        .filter((item) => item.event_id === Number(eventId) && (item.email.toLowerCase() === String(email).toLowerCase() || item.student_id.toUpperCase() === String(studentId).toUpperCase()))
+        .filter((item) => item.event_id === Number(eventId)
+          && item.email.toLowerCase() === String(email).toLowerCase()
+          && item.student_id.toUpperCase() === String(studentId).toUpperCase())
         .sort((a, b) => b.id - a.id)[0];
       return [[registration ? toRegistrationRow(registration) : undefined].filter(Boolean)];
     }
+    if (normalizedSql.includes("FROM registrations")
+      && normalizedSql.includes("WHERE event_id = ?")
+      && normalizedSql.includes("( LOWER(email) = LOWER(?) OR UPPER(student_id) = UPPER(?) )")
+      && normalizedSql.includes("ORDER BY id DESC")
+      && params.length === 3) {
+      const [eventId, email, studentId] = params;
+      const registration = registrations
+        .filter((item) => item.event_id === Number(eventId)
+          && (item.email.toLowerCase() === String(email).toLowerCase()
+            || item.student_id.toUpperCase() === String(studentId).toUpperCase()))
+        .sort((a, b) => b.id - a.id)[0];
+      return [[registration ? toRegistrationRow(registration) : undefined].filter(Boolean)];
+    }
+
 
     if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("ORDER BY id DESC") && params.length === 4) {
       const [eventId, registrationId, email, studentId] = params;
@@ -333,6 +471,9 @@ const mockEmailService = {
     SENT: "Đã gửi",
     FAILED: "Gửi thất bại"
   }),
+  createMailerTransport() {
+    return { transport: "mock" };
+  },
   buildQrPayload({ event, registration }) {
     return buildMockQrPayload(event, registration);
   },
@@ -343,6 +484,7 @@ const mockEmailService = {
 
     const resolvedQrPayload = qrPayload || buildMockQrPayload(event, registration);
     sentEmails.push({
+      type: "confirmation",
       event: clone(event),
       registration: clone(registration),
       qrPayload: resolvedQrPayload
@@ -352,6 +494,28 @@ const mockEmailService = {
       messageId: `mock-message-${sentEmails.length}`,
       qrPayload: resolvedQrPayload,
       subject: `[Xac nhan dang ky] ${event.title}`
+    };
+  },
+  async sendFeedbackInvitationEmail({ event, registration, feedbackUrl }) {
+    if (forcedSendError) {
+      throw new Error(forcedSendError);
+    }
+
+    if (!registration.email || !String(registration.email).includes("@")) {
+      throw new Error("Email người tham gia không hợp lệ.");
+    }
+
+    sentEmails.push({
+      type: "feedback",
+      event: clone(event),
+      registration: clone(registration),
+      feedbackUrl
+    });
+
+    return {
+      messageId: `mock-feedback-${sentEmails.length}`,
+      subject: `[Feedback su kien] ${event.title}`,
+      feedbackUrl
     };
   }
 };
@@ -387,8 +551,12 @@ test("GET /api/events trả về danh sách sự kiện kèm registration_count"
     assert.equal(response.status, 200);
     assert.equal(data.length, 3);
     assert.equal(data[0].registration_count, 2);
+    assert.equal(data[0].feedback_enabled, true);
+    assert.equal(data[0].feedback_response_count, 0);
     assert.equal(data[1].registration_count, 1);
+    assert.equal(data[1].feedback_enabled, false);
     assert.equal(data[2].registration_count, 0);
+    assert.equal(data[2].feedback_enabled, false);
   });
 });
 
@@ -526,5 +694,62 @@ test("POST /api/events/:eventId/registrations/:registrationId/resend-confirmatio
     assert.equal(registrationEmailLogs[0].send_type, "resend");
     assert.equal(registrationEmailLogs[0].delivery_status, "Gửi thất bại");
     assert.equal(registrationEmailLogs[0].error_message, "SMTP unavailable");
+  });
+});
+
+
+test("POST /api/events/:id/send-feedback-links gửi link feedback cho toàn bộ người đăng ký", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/events/1/send-feedback-links`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    });
+    const data = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(data.sentCount, 2);
+    assert.equal(data.failedCount, 0);
+    assert.equal(data.totalRecipients, 2);
+    assert.match(data.feedbackUrl, /\/FeedbackSuKien.html\?eventId=1$/);
+    assert.equal(sentEmails.filter((item) => item.type === "feedback").length, 2);
+    assert.ok(sentEmails.every((item) => item.type !== "feedback" || item.feedbackUrl === data.feedbackUrl));
+  });
+});
+
+test("POST /api/events/:id/feedback-responses lưu feedback đúng sự kiện và chặn gửi trùng", async () => {
+  await withServer(async (baseUrl) => {
+    const firstResponse = await fetch(`${baseUrl}/api/events/1/feedback-responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        student_id: "sv001",
+        email: "sv001@example.com",
+        satisfaction_rating: 5,
+        comment: "Su kien rat huu ich"
+      })
+    });
+    const firstData = await firstResponse.json();
+
+    assert.equal(firstResponse.status, 201);
+    assert.equal(firstData.feedbackResponse.event_id, 1);
+    assert.equal(firstData.feedbackResponse.registration_id, 1);
+    assert.equal(firstData.feedbackResponse.satisfaction_rating, 5);
+    assert.equal(feedbackResponses.length, 1);
+
+    const secondResponse = await fetch(`${baseUrl}/api/events/1/feedback-responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        student_id: "SV001",
+        email: "sv001@example.com",
+        satisfaction_rating: 4,
+        comment: "Gui lai lan 2"
+      })
+    });
+    const secondData = await secondResponse.json();
+
+    assert.equal(secondResponse.status, 409);
+    assert.equal(secondData.message, "Bạn đã gửi feedback cho sự kiện này rồi.");
+    assert.equal(feedbackResponses.length, 1);
   });
 });
