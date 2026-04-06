@@ -138,6 +138,7 @@ function getFeedbackState(eventId) {
       loading: false,
       loaded: false,
       saving: false,
+      sendingInvitation: false,
       error: "",
       form: null,
       responses: []
@@ -296,7 +297,7 @@ function renderFeedbackPanel(event) {
       <div class="feedback-panel-header">
         <div>
           <h4>Cấu hình feedback cho sự kiện</h4>
-          <p>Admin có thể tạo form feedback riêng, bật/tắt nhận phản hồi và xem góp ý đã gửi.</p>
+          <p>Admin có thể tạo form feedback riêng, bật/tắt nhận phản hồi, gửi link feedback qua email và xem góp ý đã gửi.</p>
         </div>
         <a class="register-link feedback-link" href="./FeedbackSuKien.html?eventId=${event.id}">
           Mở form feedback
@@ -343,7 +344,22 @@ function renderFeedbackPanel(event) {
           }>
             ${state.saving ? "Đang lưu..." : "Lưu cấu hình feedback"}
           </button>
+          <button
+            type="button"
+            class="secondary-button send-feedback-link-button"
+            data-event-id="${event.id}"
+            ${state.sendingInvitation || !form.is_enabled || Number(event.registration_count || 0) === 0 ? "disabled" : ""}
+          >
+            ${state.sendingInvitation ? "Đang gửi email..." : "Gửi link feedback qua email"}
+          </button>
         </div>
+        <p class="feedback-helper-text">
+          ${!form.is_enabled
+            ? "Hãy bật form feedback trước khi gửi email cho người tham gia."
+            : Number(event.registration_count || 0) === 0
+              ? "Sự kiện chưa có người đăng ký để gửi link feedback."
+              : `Hệ thống sẽ gửi link feedback cho ${Number(event.registration_count || 0)} người đăng ký của sự kiện.`}
+        </p>
       </form>
 
       <div class="feedback-summary-grid">
@@ -529,6 +545,21 @@ async function saveFeedbackConfig(eventId, payload) {
 
   if (!response.ok) {
     throw new Error(result?.message || "Không thể lưu cấu hình feedback");
+  }
+
+  return result || {};
+}
+
+async function sendFeedbackLinks(eventId) {
+  const response = await fetch(`${API_EVENTS_URL}/${eventId}/send-feedback-links`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
+
+  const result = await readJsonSafely(response);
+
+  if (!response.ok) {
+    throw new Error(result?.message || "Không thể gửi link feedback qua email");
   }
 
   return result || {};
@@ -785,6 +816,39 @@ if (eventListEl) {
           showFormMessage(error.message || "Không thể tải cấu hình feedback.", "error");
           console.error(error);
         }
+      }
+      return;
+    }
+
+    const sendFeedbackLinkButton = event.target.closest(".send-feedback-link-button");
+    if (sendFeedbackLinkButton) {
+      const eventId = Number.parseInt(sendFeedbackLinkButton.dataset.eventId, 10);
+      if (!Number.isInteger(eventId)) {
+        showFormMessage("Không xác định được sự kiện cần gửi link feedback.", "error");
+        return;
+      }
+
+      try {
+        feedbackStateByEvent[eventId] = {
+          ...getFeedbackState(eventId),
+          expanded: true,
+          sendingInvitation: true,
+          error: ""
+        };
+        renderEvents(currentEvents);
+
+        const result = await sendFeedbackLinks(eventId);
+        showFormMessage(result.message || "Đã gửi link feedback qua email.", result.failedCount ? "error" : "success");
+      } catch (error) {
+        showFormMessage(error.message || "Không thể gửi link feedback qua email.", "error");
+        console.error(error);
+      } finally {
+        feedbackStateByEvent[eventId] = {
+          ...getFeedbackState(eventId),
+          expanded: true,
+          sendingInvitation: false
+        };
+        renderEvents(currentEvents);
       }
       return;
     }

@@ -94,6 +94,49 @@ function buildEmailText({ event, registration }) {
   ].join('\n');
 }
 
+function buildFeedbackInvitationHtml({ event, registration, feedbackUrl }) {
+  const eventTitle = normalizeString(event.title);
+  const eventTime = formatDateTime(event.event_time);
+  const location = normalizeString(event.location);
+  const description = normalizeString(event.description);
+
+  return `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937; max-width: 640px; margin: 0 auto;">
+      <h2 style="color: #0f172a; margin-bottom: 8px;">Mời bạn gửi feedback sau sự kiện</h2>
+      <p>Chào <strong>${registration.full_name}</strong>,</p>
+      <p>Cảm ơn bạn đã tham gia sự kiện. Ban tổ chức rất mong nhận được phản hồi của bạn để cải thiện những lần tổ chức tiếp theo.</p>
+
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 20px 0;">
+        <h3 style="margin-top: 0; margin-bottom: 12px; color: #0f172a;">Thông tin sự kiện</h3>
+        <p style="margin: 6px 0;"><strong>Tên sự kiện:</strong> ${eventTitle}</p>
+        <p style="margin: 6px 0;"><strong>Thời gian:</strong> ${eventTime}</p>
+        <p style="margin: 6px 0;"><strong>Địa điểm:</strong> ${location}</p>
+        ${description ? `<p style="margin: 6px 0;"><strong>Mô tả:</strong> ${description}</p>` : ''}
+      </div>
+
+      <div style="margin: 24px 0; text-align: center;">
+        <a href="${feedbackUrl}" style="display: inline-block; padding: 12px 20px; border-radius: 10px; background: #2563eb; color: #ffffff; text-decoration: none; font-weight: bold;">Mở form feedback</a>
+      </div>
+
+      <p>Nếu nút không hoạt động, bạn có thể mở trực tiếp liên kết sau:</p>
+      <p><a href="${feedbackUrl}">${feedbackUrl}</a></p>
+      <p style="margin-top: 24px;">Trân trọng,<br />Ban tổ chức sự kiện</p>
+    </div>
+  `;
+}
+
+function buildFeedbackInvitationText({ event, registration, feedbackUrl }) {
+  return [
+    'Moi ban gui feedback sau su kien',
+    `Ten su kien: ${event.title}`,
+    `Thoi gian: ${formatDateTime(event.event_time)}`,
+    `Dia diem: ${event.location}`,
+    `Nguoi nhan: ${registration.full_name}`,
+    'Ban to chuc rat mong nhan duoc phan hoi cua ban.',
+    `Link feedback: ${feedbackUrl}`
+  ].join('\n');
+}
+
 function createMailerTransport() {
   const host = normalizeString(process.env.SMTP_HOST);
   const user = normalizeString(process.env.SMTP_USER);
@@ -159,9 +202,45 @@ async function sendConfirmationEmail({ event, registration, transporter }) {
   };
 }
 
+async function sendFeedbackInvitationEmail({ event, registration, feedbackUrl, transporter }) {
+  const mailer = transporter || createMailerTransport();
+  const recipientEmail = normalizeString(registration.email).toLowerCase();
+  const fromName = normalizeString(process.env.MAIL_FROM_NAME) || 'Club Event Manager';
+  const fromEmail = normalizeString(process.env.MAIL_FROM_EMAIL) || normalizeString(process.env.SMTP_USER);
+
+  if (!fromEmail) {
+    throw new Error('Thiếu địa chỉ email gửi đi.');
+  }
+
+  if (!recipientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+    throw new Error('Email người tham gia không hợp lệ.');
+  }
+
+  if (!normalizeString(feedbackUrl)) {
+    throw new Error('Thiếu đường dẫn feedback.');
+  }
+
+  const subject = `[Feedback su kien] ${event.title}`;
+
+  const info = await mailer.sendMail({
+    from: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
+    to: recipientEmail,
+    subject,
+    text: buildFeedbackInvitationText({ event, registration, feedbackUrl }),
+    html: buildFeedbackInvitationHtml({ event, registration, feedbackUrl })
+  });
+
+  return {
+    messageId: info && info.messageId ? info.messageId : null,
+    subject,
+    feedbackUrl
+  };
+}
+
 module.exports = {
   EMAIL_STATUS,
   buildQrPayload,
   createMailerTransport,
-  sendConfirmationEmail
+  sendConfirmationEmail,
+  sendFeedbackInvitationEmail
 };
