@@ -13,7 +13,7 @@
         <p class="hero-badge">Club Event Manager</p>
         <h1>Danh sách người đăng ký sự kiện</h1>
         <p class="hero-text">
-          Theo dõi số lượng người tham gia, tra cứu nhanh theo từng sự kiện và check-in thủ công
+          Theo dõi số lượng người tham gia, quét QR check-in ngay tại cổng sự kiện, tra cứu nhanh theo từng sự kiện và check-in thủ công
           bằng mã đăng ký, email hoặc MSSV ngay trên màn hình quản trị.
         </p>
 
@@ -84,6 +84,64 @@
       <div id="selected-event-info" class="event-preview-card empty-card">
         Chưa có sự kiện nào để hiển thị.
       </div>
+
+      <section class="checkin-panel">
+        <div class="checkin-panel-header">
+          <div>
+            <p class="section-tag">Check-in QR</p>
+            <h2>Quét mã QR người tham gia</h2>
+            <p class="section-text">
+              Sử dụng thiết bị check-in để quét mã QR từ vé tham dự. Khi quét thành công, hệ thống sẽ hiển thị
+              thông tin người tham gia và tự động cập nhật trạng thái “Đã check-in” nếu đúng sự kiện hiện tại.
+            </p>
+          </div>
+        </div>
+
+        <div class="qr-checkin-layout">
+          <div class="qr-scanner-card">
+            <div class="camera-preview-shell">
+              <video id="qr-scanner-video" class="qr-scanner-video hidden" autoplay playsinline muted></video>
+              <div id="qr-scanner-placeholder" class="qr-scanner-placeholder">
+                <strong>Camera check-in chưa bật</strong>
+                <span>Nhấn “Bật camera quét QR” để quét trực tiếp trên thiết bị hỗ trợ camera.</span>
+              </div>
+              <div class="scan-overlay" aria-hidden="true"></div>
+            </div>
+
+            <div class="scanner-action-row">
+              <button type="button" id="start-qr-scanner-btn" class="primary-btn compact-btn">Bật camera quét QR</button>
+              <button type="button" id="stop-qr-scanner-btn" class="outline-btn compact-btn" disabled>Tắt camera</button>
+            </div>
+            <p id="qr-scanner-status" class="scanner-status" aria-live="polite">
+              Chọn sự kiện trước, sau đó bật camera để bắt đầu quét QR.
+            </p>
+          </div>
+
+          <div class="qr-input-card">
+            <form id="qr-checkin-form" class="manual-checkin-form">
+              <div class="form-group">
+                <label for="qr-checkin-input">Nội dung QR</label>
+                <textarea
+                  id="qr-checkin-input"
+                  name="qr-checkin-input"
+                  rows="7"
+                  placeholder="Dán nội dung mã QR nếu thiết bị không hỗ trợ quét camera hoặc muốn kiểm tra thủ công"
+                ></textarea>
+                <small>
+                  Hỗ trợ nội dung QR được tạo từ hệ thống, ví dụ mã QR trên email xác nhận tham gia sự kiện.
+                </small>
+              </div>
+              <div class="scanner-action-row">
+                <button type="submit" class="primary-btn compact-btn">Xử lý mã QR</button>
+                <button type="button" id="clear-qr-checkin-btn" class="outline-btn compact-btn">Xóa nội dung QR</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div id="qr-checkin-message" class="form-message" aria-live="polite"></div>
+        <div id="qr-checkin-result" class="manual-checkin-result hidden"></div>
+      </section>
 
       <section class="checkin-panel">
         <div class="checkin-panel-header">
