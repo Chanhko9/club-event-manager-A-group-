@@ -611,6 +611,26 @@ test("POST /api/events/:id/check-in/manual cập nhật thời gian check-in", a
   });
 });
 
+
+test("POST /api/events/:id/check-in/manual trả cảnh báo khi người tham gia đã check-in trước đó", async () => {
+  await withServer(async (baseUrl) => {
+    const originalCheckinTime = findRegistration(2).checked_in_at;
+    const response = await fetch(`${baseUrl}/api/events/1/check-in/manual`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ registration_id: 2 })
+    });
+    const data = await response.json();
+
+    assert.equal(response.status, 409);
+    assert.equal(data.message, "Đã check-in");
+    assert.equal(data.first_checked_in_at, originalCheckinTime);
+    assert.equal(data.registration.id, 2);
+    assert.equal(data.registration.is_checked_in, true);
+    assert.equal(data.registration.checked_in_at, originalCheckinTime);
+  });
+});
+
 test("POST /api/events/:id/check-in/qr quét QR hợp lệ và cập nhật thời gian check-in", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/events/1/check-in/qr`, {
@@ -648,8 +668,9 @@ test("POST /api/events/:id/check-in/qr trả lỗi khi QR thuộc sự kiện kh
   });
 });
 
-test("POST /api/events/:id/check-in/qr trả lỗi khi người tham gia đã check-in trước đó", async () => {
+test("POST /api/events/:id/check-in/qr trả cảnh báo khi người tham gia đã check-in trước đó", async () => {
   await withServer(async (baseUrl) => {
+    const originalCheckinTime = findRegistration(2).checked_in_at;
     const response = await fetch(`${baseUrl}/api/events/1/check-in/qr`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -660,9 +681,11 @@ test("POST /api/events/:id/check-in/qr trả lỗi khi người tham gia đã ch
     const data = await response.json();
 
     assert.equal(response.status, 409);
-    assert.equal(data.message, "Người tham gia này đã được check-in trước đó.");
+    assert.equal(data.message, "Đã check-in");
+    assert.equal(data.first_checked_in_at, originalCheckinTime);
     assert.equal(data.registration.id, 2);
     assert.equal(data.registration.is_checked_in, true);
+    assert.equal(data.registration.checked_in_at, originalCheckinTime);
   });
 });
 
