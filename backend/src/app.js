@@ -143,6 +143,14 @@ function mapRegistrationForClient(registration) {
   };
 }
 
+function buildAlreadyCheckedInPayload(registration) {
+  return {
+    message: "Đã check-in",
+    first_checked_in_at: registration?.checked_in_at || null,
+    registration: registration ? mapRegistrationForClient(registration) : null
+  };
+}
+
 async function findRegistrationByIdForEvent(eventId, registrationId) {
   const [rows] = await pool.query(
     `
@@ -789,7 +797,7 @@ async function findRegistrationForQrScan(qrContent) {
 }
 
 async function markRegistrationAsCheckedIn(eventId, registrationId) {
-  await pool.query(
+  const [result] = await pool.query(
     `
       UPDATE registrations
       SET checked_in_at = NOW()
@@ -798,7 +806,12 @@ async function markRegistrationAsCheckedIn(eventId, registrationId) {
     [eventId, registrationId]
   );
 
-  return findRegistrationByIdForEvent(eventId, registrationId);
+  const registration = await findRegistrationByIdForEvent(eventId, registrationId);
+
+  return {
+    didUpdate: Number(result?.affectedRows || 0) > 0,
+    registration
+  };
 }
 
 async function updateRegistrationEmailStatus(registrationId, status, errorMessage = null) {
@@ -1474,18 +1487,23 @@ app.post("/api/events/:id/check-in/qr", async (req, res) => {
     }
 
     if (registration.checked_in_at) {
-      return res.status(409).json({
-        message: "Người tham gia này đã được check-in trước đó.",
-        registration: mapRegistrationForClient(registration)
-      });
+      return res.status(409).json(buildAlreadyCheckedInPayload(registration));
     }
 
-    const updatedRegistration = await markRegistrationAsCheckedIn(eventId, registration.id);
+    const checkinResult = await markRegistrationAsCheckedIn(eventId, registration.id);
+
+    if (!checkinResult.registration) {
+      throw new Error("Không tìm thấy người đăng ký sau khi cập nhật check-in.");
+    }
+
+    if (!checkinResult.didUpdate && checkinResult.registration.checked_in_at) {
+      return res.status(409).json(buildAlreadyCheckedInPayload(checkinResult.registration));
+    }
 
     return res.json({
       message: "Quét QR thành công. Đã cập nhật trạng thái check-in.",
       event,
-      registration: mapRegistrationForClient(updatedRegistration)
+      registration: mapRegistrationForClient(checkinResult.registration)
     });
   } catch (error) {
     return res.status(500).json({
@@ -1527,26 +1545,22 @@ app.post("/api/events/:id/check-in/manual", async (req, res) => {
     }
 
     if (registration.checked_in_at) {
-      return res.status(409).json({
-        message: "Người tham gia này đã được check-in trước đó.",
-        registration: mapRegistrationForClient(registration)
-      });
+      return res.status(409).json(buildAlreadyCheckedInPayload(registration));
     }
 
-    await pool.query(
-      `
-        UPDATE registrations
-        SET checked_in_at = NOW()
-        WHERE event_id = ? AND id = ? AND checked_in_at IS NULL
-      `,
-      [eventId, registrationId]
-    );
+    const checkinResult = await markRegistrationAsCheckedIn(eventId, registrationId);
 
-    const updatedRegistration = await findRegistrationByIdForEvent(eventId, registrationId);
+    if (!checkinResult.registration) {
+      throw new Error("Không tìm thấy người đăng ký sau khi cập nhật check-in.");
+    }
+
+    if (!checkinResult.didUpdate && checkinResult.registration.checked_in_at) {
+      return res.status(409).json(buildAlreadyCheckedInPayload(checkinResult.registration));
+    }
 
     return res.json({
       message: "Check-in thủ công thành công.",
-      registration: mapRegistrationForClient(updatedRegistration)
+      registration: mapRegistrationForClient(checkinResult.registration)
     });
   } catch (error) {
     return res.status(500).json({

@@ -153,15 +153,20 @@ function showToast(message, type = "success") {
     activeToastTimer = null;
   }
 
+  const toastConfig = {
+    success: { title: "Check-in thành công", icon: "✓" },
+    warning: { title: "Đã check-in", icon: "!" },
+    error: { title: "Thông báo", icon: "!" }
+  };
+  const resolvedToast = toastConfig[type] || toastConfig.error;
+
   const toastEl = document.createElement("div");
-  const title = type === "success" ? "Check-in thành công" : "Thông báo";
-  const icon = type === "success" ? "✓" : "!";
   toastEl.className = `toast ${type}`;
   toastEl.setAttribute("role", "status");
   toastEl.innerHTML = `
-    <div class="toast-icon">${icon}</div>
+    <div class="toast-icon">${resolvedToast.icon}</div>
     <div class="toast-content">
-      <strong>${title}</strong>
+      <strong>${resolvedToast.title}</strong>
       <span>${escapeHtml(message)}</span>
     </div>
   `;
@@ -303,6 +308,23 @@ function clearQrCheckinResult() {
   qrCheckinResultEl.className = "manual-checkin-result hidden";
   qrCheckinResultEl.innerHTML = "";
 }
+
+function buildAlreadyCheckedInMessage(registration) {
+  if (registration?.checked_in_at) {
+    return `Đã check-in lúc ${formatDate(registration.checked_in_at)}.`;
+  }
+
+  return "Đã check-in.";
+}
+
+function isAlreadyCheckedInResponse(error) {
+  return Boolean(
+    error?.status === 409 &&
+      error?.payload?.registration?.is_checked_in &&
+      String(error?.payload?.message || "").trim() === "Đã check-in"
+  );
+}
+
 
 function buildCheckinResultMarkup(registration, heading) {
   const checkinStatusText = registration.is_checked_in ? "Đã check-in" : "Chưa check-in";
@@ -637,8 +659,20 @@ async function processQrCheckin(qrValue, source = "manual") {
       clearQrCheckinResult();
     }
 
-    showQrCheckinMessage(error.message || "Không thể check-in bằng QR.", "error");
-    setQrScannerStatus(error.message || "Không thể check-in bằng QR.", "error");
+    if (isAlreadyCheckedInResponse(error)) {
+      const warningMessage = buildAlreadyCheckedInMessage(error.payload.registration);
+      showQrCheckinMessage(warningMessage, "warning");
+      showToast(warningMessage, "warning");
+      setQrScannerStatus(
+        source === "camera"
+          ? `${error.payload.registration.full_name} đã check-in lúc ${formatDate(error.payload.registration.checked_in_at)}.`
+          : warningMessage,
+        "warning"
+      );
+    } else {
+      showQrCheckinMessage(error.message || "Không thể check-in bằng QR.", "error");
+      setQrScannerStatus(error.message || "Không thể check-in bằng QR.", "error");
+    }
     console.error(error);
   } finally {
     isQrProcessing = false;
@@ -786,7 +820,11 @@ async function handleManualCheckinConfirm() {
       renderManualCheckinResult(error.payload.registration);
     }
 
-    showManualCheckinMessage(error.message || "Không thể check-in thủ công.", "error");
+    if (isAlreadyCheckedInResponse(error)) {
+      showManualCheckinMessage(buildAlreadyCheckedInMessage(error.payload.registration), "warning");
+    } else {
+      showManualCheckinMessage(error.message || "Không thể check-in thủ công.", "error");
+    }
     console.error(error);
   }
 }
@@ -900,10 +938,7 @@ if (manualCheckinFormEl) {
       renderManualCheckinResult(result.registration);
 
       if (result.registration.is_checked_in) {
-        showManualCheckinMessage(
-          `Người tham gia này đã check-in lúc ${formatDate(result.registration.checked_in_at)}.`,
-          "success"
-        );
+        showManualCheckinMessage(buildAlreadyCheckedInMessage(result.registration), "warning");
       } else {
         showManualCheckinMessage("Đã tìm thấy người đăng ký. Bạn có thể xác nhận check-in thủ công.", "success");
       }
