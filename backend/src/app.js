@@ -10,9 +10,7 @@ const pool = require("./config/db");
 const {
   EMAIL_STATUS,
   buildQrPayload: buildEmailQrPayload,
-  sendConfirmationEmail,
-  sendFeedbackInvitationEmail,
-  createMailerTransport
+  sendConfirmationEmail
 } = require("./services/confirmationEmailService");
 
 const app = express();
@@ -62,73 +60,6 @@ function buildQrPayload({ registrationId, eventId, studentId, email }) {
 
 function normalizeManualCheckinKeyword(value) {
   return normalizeText(value);
-}
-
-function parseScannedQrContent(value) {
-  const normalizedValue = normalizeText(value);
-  const parsedContent = {
-    raw: normalizedValue,
-    registrationId: null,
-    eventId: null
-  };
-
-  if (!normalizedValue) {
-    return parsedContent;
-  }
-
-  if (/^DK-(\d+)$/i.test(normalizedValue)) {
-    parsedContent.registrationId = parsePositiveInteger(normalizedValue.replace(/^DK-/i, ""));
-    return parsedContent;
-  }
-
-  if (normalizedValue.startsWith("{")) {
-    try {
-      const payload = JSON.parse(normalizedValue);
-      parsedContent.registrationId = parsePositiveInteger(payload?.registrationId);
-      parsedContent.eventId = parsePositiveInteger(payload?.eventId);
-      if (parsedContent.registrationId || parsedContent.eventId) {
-        return parsedContent;
-      }
-    } catch (error) {
-      // Ignore malformed JSON and continue with text-based parsing.
-    }
-  }
-
-  const registrationIdMatch = normalizedValue.match(/Ma\s*dang\s*ky\s*:\s*(\d+)/i);
-  const eventIdMatch = normalizedValue.match(/Ma\s*su\s*kien\s*:\s*(\d+)/i);
-
-  if (registrationIdMatch) {
-    parsedContent.registrationId = parsePositiveInteger(registrationIdMatch[1]);
-  }
-
-  if (eventIdMatch) {
-    parsedContent.eventId = parsePositiveInteger(eventIdMatch[1]);
-  }
-
-  return parsedContent;
-}
-
-function normalizeBaseUrl(value) {
-  return String(value ?? "").trim().replace(/\/$/, "");
-}
-
-function resolvePublicBaseUrl(req) {
-  const configuredBaseUrl = normalizeBaseUrl(process.env.PUBLIC_APP_BASE_URL || process.env.FRONTEND_PUBLIC_URL);
-  if (configuredBaseUrl) {
-    return configuredBaseUrl;
-  }
-
-  const host = normalizeText(req.get("host"));
-  if (!host) {
-    return "http://localhost:5000";
-  }
-
-  return `${req.protocol}://${host}`;
-}
-
-function buildFeedbackFormUrl(req, eventId) {
-  const publicBaseUrl = resolvePublicBaseUrl(req);
-  return `${publicBaseUrl}/FeedbackSuKien.html?eventId=${eventId}`;
 }
 
 function mapRegistrationForClient(registration) {
@@ -451,6 +382,14 @@ async function ensureRegistrationEmailInfrastructure() {
         ON DELETE CASCADE
     )
   `);
+
+  await ensureTableColumn("registration_email_logs", "recipient_email", "VARCHAR(255) NOT NULL DEFAULT '' AFTER event_id");
+  await ensureTableColumn("registration_email_logs", "send_type", "VARCHAR(20) NOT NULL DEFAULT 'initial' AFTER recipient_email");
+  await ensureTableColumn("registration_email_logs", "delivery_status", `VARCHAR(30) NOT NULL DEFAULT '${EMAIL_STATUS.PENDING}' AFTER send_type`);
+  await ensureTableColumn("registration_email_logs", "message_id", "VARCHAR(255) NULL AFTER delivery_status");
+  await ensureTableColumn("registration_email_logs", "error_message", "TEXT NULL AFTER message_id");
+  await ensureTableColumn("registration_email_logs", "qr_payload", "LONGTEXT NULL AFTER error_message");
+  await ensureTableColumn("registration_email_logs", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER qr_payload");
 }
 
 async function ensureFeedbackTables() {
@@ -655,15 +594,6 @@ async function getFeedbackResponsesByEventId(eventId) {
   return rows;
 }
 
-async function getEventFeedbackSummary(eventId) {
-  const feedbackForm = await findFeedbackFormByEventId(eventId);
-
-  return {
-    feedback_enabled: Boolean(feedbackForm?.is_enabled),
-    feedback_response_count: Number(feedbackForm?.response_count || 0)
-  };
-}
-
 async function findDuplicateRegistration({ event_id, student_id, email }) {
   const [rows] = await pool.query(
     `
@@ -754,11 +684,6 @@ async function findRegistrationById(registrationId) {
         email_delivery_status,
         email_sent_at,
         email_error_message,
-        checked_in_at,
-        CASE
-          WHEN checked_in_at IS NULL THEN 'Chưa check-in'
-          ELSE 'Đã check-in'
-        END AS check_in_status,
         created_at
       FROM registrations
       WHERE id = ?
@@ -768,37 +693,6 @@ async function findRegistrationById(registrationId) {
   );
 
   return rows[0] || null;
-}
-
-async function findRegistrationForQrScan(qrContent) {
-  const parsedQrContent = parseScannedQrContent(qrContent);
-
-  if (!parsedQrContent.registrationId) {
-    return {
-      registration: null,
-      parsedQrContent
-    };
-  }
-
-  const registration = await findRegistrationById(parsedQrContent.registrationId);
-
-  return {
-    registration,
-    parsedQrContent
-  };
-}
-
-async function markRegistrationAsCheckedIn(eventId, registrationId) {
-  await pool.query(
-    `
-      UPDATE registrations
-      SET checked_in_at = NOW()
-      WHERE event_id = ? AND id = ? AND checked_in_at IS NULL
-    `,
-    [eventId, registrationId]
-  );
-
-  return findRegistrationByIdForEvent(eventId, registrationId);
 }
 
 async function updateRegistrationEmailStatus(registrationId, status, errorMessage = null) {
@@ -892,6 +786,31 @@ async function createRegistrationEmailLog({
   };
 }
 
+function buildDeliveryMetadataWarningMessage(warnings) {
+  if (!Array.isArray(warnings) || warnings.length === 0) {
+    return null;
+  }
+
+  return warnings.join(" ");
+}
+
+async function tryUpdateRegistrationEmailStatus(registrationId, status, errorMessage, warnings) {
+  try {
+    await updateRegistrationEmailStatus(registrationId, status, errorMessage);
+  } catch (error) {
+    warnings.push(`Không thể cập nhật trạng thái email: ${error.message}`);
+  }
+}
+
+async function tryCreateRegistrationEmailLog(logPayload, warnings) {
+  try {
+    return await createRegistrationEmailLog(logPayload);
+  } catch (error) {
+    warnings.push(`Không thể lưu lịch sử gửi email: ${error.message}`);
+    return null;
+  }
+}
+
 async function deliverRegistrationConfirmationEmail({
   event,
   registration,
@@ -900,6 +819,7 @@ async function deliverRegistrationConfirmationEmail({
 }) {
   const recipientEmail = normalizeEmail(registration.email);
   const qrPayload = resolveRegistrationQrPayload({ event, registration });
+  const warnings = [];
 
   await persistRegistrationQrPayload(registration.id, qrPayload);
 
@@ -907,22 +827,28 @@ async function deliverRegistrationConfirmationEmail({
     const error = new Error("Email người đăng ký không hợp lệ.");
     error.statusCode = 400;
 
-    await updateRegistrationEmailStatus(registration.id, EMAIL_STATUS.FAILED, error.message);
-    error.emailLog = await createRegistrationEmailLog({
-      registrationId: registration.id,
-      eventId: event.id,
-      recipientEmail: recipientEmail || normalizeText(registration.email),
-      sendType,
-      deliveryStatus: EMAIL_STATUS.FAILED,
-      errorMessage: error.message,
-      qrPayload
-    });
+    await tryUpdateRegistrationEmailStatus(registration.id, EMAIL_STATUS.FAILED, error.message, warnings);
+    error.emailLog = await tryCreateRegistrationEmailLog(
+      {
+        registrationId: registration.id,
+        eventId: event.id,
+        recipientEmail: recipientEmail || normalizeText(registration.email),
+        sendType,
+        deliveryStatus: EMAIL_STATUS.FAILED,
+        errorMessage: error.message,
+        qrPayload
+      },
+      warnings
+    );
+    error.deliveryWarnings = warnings;
 
     throw error;
   }
 
+  let emailResult;
+
   try {
-    const emailResult = await sendConfirmationEmail({
+    emailResult = await sendConfirmationEmail({
       event,
       registration: {
         ...registration,
@@ -931,9 +857,28 @@ async function deliverRegistrationConfirmationEmail({
       qrPayload,
       transporter
     });
+  } catch (emailError) {
+    await tryUpdateRegistrationEmailStatus(registration.id, EMAIL_STATUS.FAILED, emailError.message, warnings);
+    emailError.emailLog = await tryCreateRegistrationEmailLog(
+      {
+        registrationId: registration.id,
+        eventId: event.id,
+        recipientEmail,
+        sendType,
+        deliveryStatus: EMAIL_STATUS.FAILED,
+        errorMessage: emailError.message,
+        qrPayload
+      },
+      warnings
+    );
+    emailError.deliveryWarnings = warnings;
+    emailError.statusCode = emailError.statusCode || 502;
+    throw emailError;
+  }
 
-    await updateRegistrationEmailStatus(registration.id, EMAIL_STATUS.SENT, null);
-    const emailLog = await createRegistrationEmailLog({
+  await tryUpdateRegistrationEmailStatus(registration.id, EMAIL_STATUS.SENT, null, warnings);
+  const emailLog = await tryCreateRegistrationEmailLog(
+    {
       registrationId: registration.id,
       eventId: event.id,
       recipientEmail,
@@ -941,27 +886,17 @@ async function deliverRegistrationConfirmationEmail({
       deliveryStatus: EMAIL_STATUS.SENT,
       messageId: emailResult.messageId,
       qrPayload: emailResult.qrPayload
-    });
+    },
+    warnings
+  );
 
-    return {
-      emailResult,
-      emailLog,
-      qrPayload: emailResult.qrPayload
-    };
-  } catch (emailError) {
-    await updateRegistrationEmailStatus(registration.id, EMAIL_STATUS.FAILED, emailError.message);
-    emailError.emailLog = await createRegistrationEmailLog({
-      registrationId: registration.id,
-      eventId: event.id,
-      recipientEmail,
-      sendType,
-      deliveryStatus: EMAIL_STATUS.FAILED,
-      errorMessage: emailError.message,
-      qrPayload
-    });
-    emailError.statusCode = emailError.statusCode || 502;
-    throw emailError;
-  }
+  return {
+    emailResult,
+    emailLog,
+    qrPayload: emailResult.qrPayload,
+    warningMessage: buildDeliveryMetadataWarningMessage(warnings),
+    warnings
+  };
 }
 
 function getDuplicateRegistrationMessage(duplicatedBy) {
@@ -1228,14 +1163,7 @@ app.get("/api/events", async (req, res) => {
       ORDER BY e.event_time ASC
     `);
 
-    const enrichedEvents = await Promise.all(
-      rows.map(async (event) => ({
-        ...event,
-        ...(await getEventFeedbackSummary(event.id))
-      }))
-    );
-
-    res.json(enrichedEvents);
+    res.json(rows);
   } catch (error) {
     res.status(500).json({
       message: "Failed to fetch events",
@@ -1404,6 +1332,7 @@ app.post("/api/events/:eventId/registrations/:registrationId/resend-confirmation
 
     return res.json({
       message: "Đã gửi lại email xác nhận thành công.",
+      warning: deliveryResult.warningMessage || null,
       registration: mapRegistrationForClient(latestRegistration || registration),
       emailLog: deliveryResult.emailLog,
       qrPayload: deliveryResult.qrPayload
@@ -1420,77 +1349,9 @@ app.post("/api/events/:eventId/registrations/:registrationId/resend-confirmation
           ? error.message
           : "Gửi lại email xác nhận thất bại.",
       error: error.message,
+      warnings: Array.isArray(error.deliveryWarnings) ? error.deliveryWarnings : [],
       registration: latestRegistration ? mapRegistrationForClient(latestRegistration) : registration ? mapRegistrationForClient(registration) : null,
       emailLog: error.emailLog || null
-    });
-  }
-});
-
-app.post("/api/events/:id/check-in/qr", async (req, res) => {
-  try {
-    const eventId = parsePositiveInteger(req.params.id);
-    const qrContent = normalizeText(req.body?.qr_content || req.body?.qrContent || req.body?.value);
-
-    if (!eventId) {
-      return res.status(400).json({
-        message: "Event id is invalid"
-      });
-    }
-
-    if (!qrContent) {
-      return res.status(400).json({
-        message: "Vui lòng cung cấp nội dung QR để check-in."
-      });
-    }
-
-    const event = await findEventById(eventId);
-    if (!event) {
-      return res.status(404).json({
-        message: "Sự kiện không tồn tại"
-      });
-    }
-
-    const { registration, parsedQrContent } = await findRegistrationForQrScan(qrContent);
-
-    if (!registration) {
-      return res.status(404).json({
-        message: "QR không hợp lệ hoặc không tồn tại trong hệ thống.",
-        qrContent
-      });
-    }
-
-    if (parsedQrContent.eventId && Number(parsedQrContent.eventId) !== Number(registration.event_id)) {
-      return res.status(400).json({
-        message: "QR không hợp lệ cho người tham gia này.",
-        registration: mapRegistrationForClient(registration)
-      });
-    }
-
-    if (Number(registration.event_id) !== Number(eventId)) {
-      return res.status(409).json({
-        message: "QR thuộc sự kiện khác, không thể check-in cho sự kiện hiện tại.",
-        registration: mapRegistrationForClient(registration)
-      });
-    }
-
-    if (registration.checked_in_at) {
-      return res.status(409).json({
-        message: "Người tham gia này đã được check-in trước đó.",
-        registration: mapRegistrationForClient(registration)
-      });
-    }
-
-    const updatedRegistration = await markRegistrationAsCheckedIn(eventId, registration.id);
-
-    return res.json({
-      message: "Quét QR thành công. Đã cập nhật trạng thái check-in.",
-      event,
-      registration: mapRegistrationForClient(updatedRegistration)
-    });
-  } catch (error) {
-    return res.status(500).json({
-      message: "Không thể check-in bằng QR",
-      error: error.message
     });
   }
 });
@@ -1793,103 +1654,6 @@ app.put("/api/events/:id/feedback-form", async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       message: "Không thể lưu cấu hình feedback",
-      error: error.message
-    });
-  }
-});
-
-app.post("/api/events/:id/send-feedback-links", async (req, res) => {
-  try {
-    const eventId = parsePositiveInteger(req.params.id);
-
-    if (!eventId) {
-      return res.status(400).json({
-        message: "Event id is invalid"
-      });
-    }
-
-    const event = await findEventById(eventId);
-    if (!event) {
-      return res.status(404).json({
-        message: "Sự kiện không tồn tại"
-      });
-    }
-
-    const feedbackForm = await findFeedbackFormByEventId(eventId);
-    if (!feedbackForm || !Boolean(feedbackForm.is_enabled)) {
-      return res.status(409).json({
-        message: "Vui lòng mở form feedback trước khi gửi link cho người tham gia."
-      });
-    }
-
-    const registrations = await getRegistrationsByEventId(eventId, { checkin: "all" });
-    if (!registrations.length) {
-      return res.status(404).json({
-        message: "Sự kiện chưa có người đăng ký để gửi link feedback."
-      });
-    }
-
-    const feedbackUrl = buildFeedbackFormUrl(req, eventId);
-    const transporter = createMailerTransport();
-
-    const deliveryResults = await Promise.allSettled(
-      registrations.map((registration) =>
-        sendFeedbackInvitationEmail({
-          event,
-          registration,
-          feedbackUrl,
-          transporter
-        })
-      )
-    );
-
-    const sent = [];
-    const failed = [];
-
-    deliveryResults.forEach((result, index) => {
-      const registration = registrations[index];
-      if (result.status === "fulfilled") {
-        sent.push({
-          registration_id: registration.id,
-          full_name: registration.full_name,
-          email: registration.email,
-          message_id: result.value?.messageId || null
-        });
-        return;
-      }
-
-      failed.push({
-        registration_id: registration.id,
-        full_name: registration.full_name,
-        email: registration.email,
-        error: result.reason?.message || "Gửi email thất bại."
-      });
-    });
-
-    const hasSent = sent.length > 0;
-    const hasFailed = failed.length > 0;
-    const statusCode = hasFailed && !hasSent ? 502 : 200;
-
-    let message = `Đã gửi link feedback cho ${sent.length}/${registrations.length} người tham gia.`;
-    if (hasFailed && hasSent) {
-      message = `Đã gửi link feedback cho ${sent.length}/${registrations.length} người tham gia. ${failed.length} email gửi thất bại.`;
-    } else if (hasFailed && !hasSent) {
-      message = "Không thể gửi email feedback cho người tham gia nào.";
-    }
-
-    return res.status(statusCode).json({
-      message,
-      event,
-      feedbackUrl,
-      totalRecipients: registrations.length,
-      sentCount: sent.length,
-      failedCount: failed.length,
-      sent,
-      failed
-    });
-  } catch (error) {
-    return res.status(500).json({
-      message: "Không thể gửi link feedback qua email",
       error: error.message
     });
   }
