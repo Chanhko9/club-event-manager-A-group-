@@ -14,6 +14,15 @@ const {
   sendFeedbackInvitationEmail,
   createMailerTransport
 } = require("./services/confirmationEmailService");
+const {
+  ADMIN_SESSION_COOKIE_NAME,
+  getAdminSessionConfig,
+  createAdminSessionToken,
+  verifyAdminSessionToken,
+  authenticateAdmin,
+  getSessionTokenFromRequest,
+  ensureAdminAuthInfrastructure
+} = require("./services/adminAuthService");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -23,7 +32,73 @@ const EMAIL_SEND_TYPES = Object.freeze({
   RESEND: "resend"
 });
 
-app.use(cors());
+
+function buildCookieOptions(maxAgeMs = 0) {
+  return [
+    `${ADMIN_SESSION_COOKIE_NAME}=`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    maxAgeMs > 0 ? `Max-Age=${Math.floor(maxAgeMs / 1000)}` : "Max-Age=0"
+  ].join("; ");
+}
+
+function setAdminSessionCookie(res, sessionToken) {
+  const { sessionTtlHours } = getAdminSessionConfig();
+  const maxAgeMs = sessionTtlHours * 60 * 60 * 1000;
+  res.setHeader("Set-Cookie", buildCookieOptions(maxAgeMs).replace(`${ADMIN_SESSION_COOKIE_NAME}=`, `${ADMIN_SESSION_COOKIE_NAME}=${encodeURIComponent(sessionToken)}`));
+}
+
+function clearAdminSessionCookie(res) {
+  res.setHeader("Set-Cookie", buildCookieOptions(0));
+}
+
+async function attachAdminSession(req, res, next) {
+  try {
+    const token = getSessionTokenFromRequest(req);
+    const verificationResult = await verifyAdminSessionToken(token);
+
+    req.adminSession = verificationResult.isValid
+      ? {
+          isAuthenticated: true,
+          ...verificationResult.session
+        }
+      : {
+          isAuthenticated: false
+        };
+
+    next();
+  } catch (error) {
+    req.adminSession = {
+      isAuthenticated: false
+    };
+    next();
+  }
+}
+
+function requireAdminApiAuth(req, res, next) {
+  if (req.adminSession?.isAuthenticated) {
+    return next();
+  }
+
+  return res.status(401).json({
+    message: "Vui lòng đăng nhập bằng tài khoản admin để sử dụng chức năng quản trị.",
+    code: "ADMIN_AUTH_REQUIRED"
+  });
+}
+
+function requireAdminPageAuth(req, res, next) {
+  if (req.adminSession?.isAuthenticated) {
+    return next();
+  }
+
+  const redirectPath = encodeURIComponent(req.originalUrl || "/TaoSuKien.html");
+  return res.redirect(`/LoginAdmin.html?redirect=${redirectPath}`);
+}
+
+app.use(attachAdminSession);
+
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 function normalizeText(value) {
@@ -110,6 +185,32 @@ function parseScannedQrContent(value) {
 
 function normalizeBaseUrl(value) {
   return String(value ?? "").trim().replace(/\/$/, "");
+}
+
+function normalizeFrontendRedirectPath(value) {
+  const rawValue = normalizeText(value);
+  if (!rawValue) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(rawValue)) {
+    try {
+      const parsedUrl = new URL(rawValue);
+      return `${parsedUrl.pathname || "/"}${parsedUrl.search || ""}`;
+    } catch (error) {
+      return "";
+    }
+  }
+
+  if (rawValue.startsWith("javascript:") || rawValue.startsWith("//")) {
+    return "";
+  }
+
+  if (rawValue.startsWith("./")) {
+    return `/${rawValue.slice(2)}`;
+  }
+
+  return rawValue.startsWith("/") ? rawValue : `/${rawValue}`;
 }
 
 function resolvePublicBaseUrl(req) {
@@ -1206,6 +1307,69 @@ async function buildRegistrationWorkbook(event, registrations) {
   return workbook;
 }
 
+app.post("/api/admin/login", async (req, res) => {
+  try {
+    const identifier = normalizeText(req.body?.identifier);
+    const password = normalizeText(req.body?.password);
+    const redirectTo = normalizeFrontendRedirectPath(req.body?.redirect) || "/TaoSuKien.html";
+
+    if (!identifier || !password) {
+      return res.status(400).json({
+        message: "Vui lòng nhập tên đăng nhập/email và mật khẩu."
+      });
+    }
+
+    const admin = await authenticateAdmin({ identifier, password });
+    if (!admin) {
+      return res.status(401).json({
+        message: "Thông tin đăng nhập admin không đúng."
+      });
+    }
+
+    const sessionToken = createAdminSessionToken(admin);
+    setAdminSessionCookie(res, sessionToken);
+
+    return res.status(200).json({
+      message: "Đăng nhập admin thành công.",
+      admin,
+      redirectTo
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể đăng nhập admin lúc này.",
+      error: error.message
+    });
+  }
+});
+
+app.post("/api/admin/logout", (req, res) => {
+  clearAdminSessionCookie(res);
+  return res.status(200).json({
+    message: "Đăng xuất admin thành công."
+  });
+});
+
+app.get("/api/admin/session", (req, res) => {
+  if (!req.adminSession?.isAuthenticated) {
+    return res.status(401).json({
+      message: "Chưa đăng nhập admin.",
+      code: "ADMIN_NOT_AUTHENTICATED"
+    });
+  }
+
+  return res.status(200).json({
+    isAuthenticated: true,
+    admin: {
+      id: req.adminSession.id,
+      username: req.adminSession.username,
+      email: req.adminSession.email,
+      full_name: req.adminSession.full_name,
+      role: req.adminSession.role
+    },
+    expiresAt: req.adminSession.expiresAt
+  });
+});
+
 app.get("/api/health", async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT 1 AS connected");
@@ -1284,7 +1448,7 @@ app.get("/api/events/:id", async (req, res) => {
   }
 });
 
-app.get("/api/events/:id/registrations", async (req, res) => {
+app.get("/api/events/:id/registrations", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
 
@@ -1331,7 +1495,7 @@ app.get("/api/events/:id/registrations", async (req, res) => {
   }
 });
 
-app.get("/api/events/:id/registrations/search", async (req, res) => {
+app.get("/api/events/:id/registrations/search", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
     const keyword = normalizeManualCheckinKeyword(req.query.keyword);
@@ -1374,7 +1538,7 @@ app.get("/api/events/:id/registrations/search", async (req, res) => {
   }
 });
 
-app.post("/api/events/:eventId/registrations/:registrationId/resend-confirmation-email", async (req, res) => {
+app.post("/api/events/:eventId/registrations/:registrationId/resend-confirmation-email", requireAdminApiAuth, async (req, res) => {
   let registration = null;
 
   try {
@@ -1439,7 +1603,7 @@ app.post("/api/events/:eventId/registrations/:registrationId/resend-confirmation
   }
 });
 
-app.post("/api/events/:id/check-in/qr", async (req, res) => {
+app.post("/api/events/:id/check-in/qr", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
     const qrContent = normalizeText(req.body?.qr_content || req.body?.qrContent || req.body?.value);
@@ -1513,7 +1677,7 @@ app.post("/api/events/:id/check-in/qr", async (req, res) => {
   }
 });
 
-app.post("/api/events/:id/check-in/manual", async (req, res) => {
+app.post("/api/events/:id/check-in/manual", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
     const registrationId = parsePositiveInteger(req.body?.registration_id);
@@ -1570,7 +1734,7 @@ app.post("/api/events/:id/check-in/manual", async (req, res) => {
   }
 });
 
-app.get("/api/events/:id/registrations/export", async (req, res) => {
+app.get("/api/events/:id/registrations/export", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
 
@@ -1608,7 +1772,7 @@ app.get("/api/events/:id/registrations/export", async (req, res) => {
   }
 });
 
-app.post("/api/events", async (req, res) => {
+app.post("/api/events", requireAdminApiAuth, async (req, res) => {
   try {
     const validation = validateEventPayload(req.body);
 
@@ -1640,7 +1804,7 @@ app.post("/api/events", async (req, res) => {
   }
 });
 
-app.put("/api/events/:id", async (req, res) => {
+app.put("/api/events/:id", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
 
@@ -1687,7 +1851,7 @@ app.put("/api/events/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/events/:id", async (req, res) => {
+app.delete("/api/events/:id", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
 
@@ -1731,7 +1895,7 @@ app.delete("/api/events/:id", async (req, res) => {
 });
 
 
-app.get("/api/events/:id/feedback-form", async (req, res) => {
+app.get("/api/events/:id/feedback-form", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
 
@@ -1773,7 +1937,7 @@ app.get("/api/events/:id/feedback-form", async (req, res) => {
   }
 });
 
-app.put("/api/events/:id/feedback-form", async (req, res) => {
+app.put("/api/events/:id/feedback-form", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
 
@@ -1812,7 +1976,7 @@ app.put("/api/events/:id/feedback-form", async (req, res) => {
   }
 });
 
-app.post("/api/events/:id/send-feedback-links", async (req, res) => {
+app.post("/api/events/:id/send-feedback-links", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
 
@@ -2154,14 +2318,35 @@ app.post("/api/registrations", async (req, res) => {
   }
 });
 
-app.use(express.static(frontendDir));
-
-app.get("/", (req, res) => {
-  res.redirect("/TaoSuKien.html");
+app.get(["/", "/index.html", "/frontend", "/frontend/", "/frontend/index.html"], (req, res) => {
+  res.sendFile(path.resolve(frontendDir, "index.html"));
 });
 
-const appReady = Promise.all([ensureRegistrationEmailInfrastructure(), ensureFeedbackTables()]).catch((error) => {
-  console.error("Không thể khởi tạo bảng feedback:", error.message);
+app.get(["/LoginAdmin.html", "/frontend/LoginAdmin.html"], (req, res) => {
+  if (req.adminSession?.isAuthenticated) {
+    return res.redirect("/TaoSuKien.html");
+  }
+
+  return res.sendFile(path.resolve(frontendDir, "LoginAdmin.html"));
+});
+
+app.get(["/TaoSuKien.html", "/frontend/TaoSuKien.html"], requireAdminPageAuth, (req, res) => {
+  res.sendFile(path.resolve(frontendDir, "TaoSuKien.html"));
+});
+
+app.get(["/DanhSachDangKy.html", "/frontend/DanhSachDangKy.html"], requireAdminPageAuth, (req, res) => {
+  res.sendFile(path.resolve(frontendDir, "DanhSachDangKy.html"));
+});
+
+app.use("/frontend", express.static(frontendDir));
+app.use(express.static(frontendDir));
+
+const appReady = Promise.all([
+  ensureRegistrationEmailInfrastructure(),
+  ensureFeedbackTables(),
+  ensureAdminAuthInfrastructure()
+]).catch((error) => {
+  console.error("Không thể khởi tạo hạ tầng ứng dụng:", error.message);
   throw error;
 });
 
@@ -2170,7 +2355,7 @@ if (require.main === module) {
     .then(() => {
       app.listen(PORT, () => {
         console.log(`Server is running at http://localhost:${PORT}`);
-        console.log(`Frontend: http://localhost:${PORT}/TaoSuKien.html`);
+        console.log(`Frontend: http://localhost:${PORT}/`);
       });
     })
     .catch((error) => {

@@ -1,15 +1,4 @@
-function getApiBaseUrl() {
-  const isLocalBrowserHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-  const isBackendOrigin = isLocalBrowserHost && window.location.port === "5000";
-
-  if (window.location.protocol === "file:" || (isLocalBrowserHost && !isBackendOrigin)) {
-    return "http://localhost:5000/api";
-  }
-
-  return `${window.location.origin}/api`;
-}
-
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = window.AppConfig.API_BASE_URL;
 
 const eventSelectorEl = document.getElementById("event-selector");
 const selectedEventInfoEl = document.getElementById("selected-event-info");
@@ -37,6 +26,8 @@ const qrScannerVideoEl = document.getElementById("qr-scanner-video");
 const qrScannerPlaceholderEl = document.getElementById("qr-scanner-placeholder");
 const qrScannerStatusEl = document.getElementById("qr-scanner-status");
 const toastContainerEl = document.getElementById("toast-container");
+const adminSessionBadgeEl = document.getElementById("admin-session-badge");
+const adminLogoutBtnEl = document.getElementById("admin-logout-btn");
 
 /* Nếu HTML của bạn dùng id khác thì sửa 2 dòng dưới cho khớp */
 const searchInputEl = document.getElementById("search-input");
@@ -54,6 +45,28 @@ let qrScannerStream = null;
 let qrScannerDetector = null;
 let qrScannerIntervalId = null;
 let isQrProcessing = false;
+
+function renderAdminSession(admin) {
+  if (!adminSessionBadgeEl) return;
+  const displayName = admin?.full_name || admin?.username || 'admin';
+  const roleText = admin?.role ? ` (${admin.role})` : '';
+  adminSessionBadgeEl.textContent = `Admin: ${displayName}${roleText}`;
+}
+
+async function initializeAdminDashboard() {
+  try {
+    const session = await window.AdminAuth.ensureAdminSession();
+    renderAdminSession(session.admin);
+
+    adminLogoutBtnEl?.addEventListener("click", async () => {
+      await window.AdminAuth.logoutAdmin();
+    });
+
+    await initializePage();
+  } catch (error) {
+    console.error(error);
+  }
+}
 let lastScannedQrValue = "";
 let lastScannedAt = 0;
 
@@ -950,7 +963,7 @@ if (manualCheckinFormEl) {
   });
 }
 
-initializePage();
+initializeAdminDashboard();
 
 window.addEventListener("beforeunload", () => {
   stopQrScanner();

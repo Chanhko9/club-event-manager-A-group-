@@ -1,12 +1,14 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
+const { hashPassword } = require("../src/services/passwordHashService");
 
 let events;
 let registrations;
 let registrationEmailLogs;
 let feedbackForms;
 let feedbackResponses;
+let admins;
 let sentEmails;
 let forcedSendError;
 let registrationColumns;
@@ -30,6 +32,8 @@ function buildMockQrPayload(event, registration) {
 }
 
 function resetData() {
+  const adminPasswordHash = hashPassword("admin123456", { saltHex: "00112233445566778899aabbccddeeff" });
+
   events = [
     { id: 1, title: "Workshop Git co ban", event_time: "2026-03-25 18:00:00", location: "Phong A101", description: "Huong dan Git va GitHub cho thanh vien moi", created_at: "2026-03-23 12:37:58", updated_at: "2026-03-23 12:37:58" },
     { id: 2, title: "Workshop HTML CSS JS", event_time: "2026-03-28 14:00:00", location: "Phong B203", description: "On tap nen tang frontend", created_at: "2026-03-23 12:37:58", updated_at: "2026-03-23 12:37:58" },
@@ -124,6 +128,20 @@ function resetData() {
 
   feedbackResponses = [];
 
+  admins = [
+    {
+      id: 1,
+      username: "admin",
+      email: "admin@example.com",
+      full_name: "Super Admin",
+      password_hash: adminPasswordHash,
+      role: "super_admin",
+      is_active: 1,
+      created_at: "2026-03-23 12:00:00",
+      updated_at: "2026-03-23 12:00:00"
+    }
+  ];
+
   registrationEmailLogs = [];
   sentEmails = [];
   forcedSendError = null;
@@ -169,6 +187,20 @@ function findFeedbackResponse(eventId, registrationId) {
   return feedbackResponses.find((item) => item.event_id === Number(eventId) && item.registration_id === Number(registrationId)) || null;
 }
 
+function findAdminByIdentifier(identifier) {
+  const normalizedIdentifier = String(identifier || "").trim().toLowerCase();
+  return admins.find((item) =>
+    Number(item.is_active) === 1
+    && (
+      String(item.username || "").trim().toLowerCase() === normalizedIdentifier
+      || String(item.email || "").trim().toLowerCase() === normalizedIdentifier
+    )) || null;
+}
+
+function findAdminById(adminId) {
+  return admins.find((item) => item.id === Number(adminId) && Number(item.is_active) === 1) || null;
+}
+
 function normalizeSql(sql) {
   return sql.replace(/\s+/g, " ").trim();
 }
@@ -205,8 +237,40 @@ const mockPool = {
 
     if (normalizedSql.startsWith("CREATE TABLE IF NOT EXISTS feedback_forms") ||
         normalizedSql.startsWith("CREATE TABLE IF NOT EXISTS feedback_responses") ||
-        normalizedSql.startsWith("CREATE TABLE IF NOT EXISTS registration_email_logs")) {
+        normalizedSql.startsWith("CREATE TABLE IF NOT EXISTS registration_email_logs") ||
+        normalizedSql.startsWith("CREATE TABLE IF NOT EXISTS admins")) {
       return [{ warningStatus: 0 }];
+    }
+
+    if (normalizedSql === "SELECT COUNT(*) AS total FROM admins") {
+      return [[{ total: admins.length }]];
+    }
+
+    if (normalizedSql.startsWith("INSERT INTO admins (username, email, full_name, password_hash, role, is_active)")) {
+      const [username, email, fullName, passwordHash, role] = params;
+      const newAdmin = {
+        id: admins.length + 1,
+        username,
+        email,
+        full_name: fullName,
+        password_hash: passwordHash,
+        role,
+        is_active: 1,
+        created_at: "2026-03-23 12:00:00",
+        updated_at: "2026-03-23 12:00:00"
+      };
+      admins.push(newAdmin);
+      return [{ insertId: newAdmin.id }];
+    }
+
+    if (normalizedSql.includes("FROM admins") && normalizedSql.includes("LOWER(username) = LOWER(?)") && normalizedSql.includes("LOWER(email) = LOWER(?)")) {
+      const admin = findAdminByIdentifier(params[0]) || findAdminByIdentifier(params[1]);
+      return [[admin ? clone(admin) : undefined].filter(Boolean)];
+    }
+
+    if (normalizedSql.includes("FROM admins") && normalizedSql.includes("WHERE id = ? AND is_active = 1") && normalizedSql.includes("LIMIT 1")) {
+      const admin = findAdminById(params[0]);
+      return [[admin ? clone(admin) : undefined].filter(Boolean)];
     }
 
     if (normalizedSql.includes("FROM feedback_forms ff") && normalizedSql.includes("WHERE ff.event_id = ?") && normalizedSql.includes("response_count")) {
@@ -526,6 +590,14 @@ require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: m
 const emailServicePath = path.resolve(__dirname, "../src/services/confirmationEmailService.js");
 require.cache[emailServicePath] = { id: emailServicePath, filename: emailServicePath, loaded: true, exports: mockEmailService };
 
+process.env.ADMIN_BOOTSTRAP_USERNAME = "admin";
+process.env.ADMIN_BOOTSTRAP_EMAIL = "admin@example.com";
+process.env.ADMIN_BOOTSTRAP_PASSWORD = "admin123456";
+process.env.ADMIN_BOOTSTRAP_FULL_NAME = "Super Admin";
+process.env.ADMIN_BOOTSTRAP_ROLE = "super_admin";
+process.env.ADMIN_SESSION_SECRET = "test-secret";
+process.env.ADMIN_SESSION_TTL_HOURS = "8";
+
 const app = require("../src/app");
 
 async function withServer(run) {
@@ -542,6 +614,56 @@ async function withServer(run) {
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
 }
+
+async function createAdminRequest(baseUrl) {
+  const loginResponse = await fetch(`${baseUrl}/api/admin/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier: "admin", password: "admin123456" })
+  });
+  const loginPayload = await loginResponse.json();
+
+  assert.equal(loginResponse.status, 200, loginPayload?.message || "Admin login failed in test.");
+
+  const rawCookie = loginResponse.headers.get("set-cookie") || "";
+  const sessionCookie = rawCookie.split(";")[0];
+  assert.ok(sessionCookie.startsWith("admin_session="));
+
+  return (path, init = {}) => {
+    const headers = new Headers(init.headers || {});
+    headers.set("cookie", sessionCookie);
+
+    return fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers
+    });
+  };
+}
+
+test("POST /api/admin/login đăng nhập thành công và tạo session cookie", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/admin/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier: "admin", password: "admin123456" })
+    });
+    const data = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(data.admin.username, "admin");
+    assert.ok((response.headers.get("set-cookie") || "").includes("admin_session="));
+  });
+});
+
+test("GET route quản trị trả 401 khi chưa đăng nhập admin", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/events/1/registrations`);
+    const data = await response.json();
+
+    assert.equal(response.status, 401);
+    assert.equal(data.code, "ADMIN_AUTH_REQUIRED");
+  });
+});
 
 test("GET /api/events trả về danh sách sự kiện kèm registration_count", async () => {
   await withServer(async (baseUrl) => {
@@ -562,7 +684,8 @@ test("GET /api/events trả về danh sách sự kiện kèm registration_count"
 
 test("GET /api/events/:id/registrations trả về đúng danh sách theo sự kiện và trạng thái email/check-in", async () => {
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/events/1/registrations`);
+    const adminFetch = await createAdminRequest(baseUrl);
+    const response = await adminFetch(`/api/events/1/registrations`);
     const data = await response.json();
 
     assert.equal(response.status, 200);
@@ -577,18 +700,19 @@ test("GET /api/events/:id/registrations trả về đúng danh sách theo sự k
 
 test("GET /api/events/:id/registrations/search tìm được theo email, MSSV hoặc mã đăng ký", async () => {
   await withServer(async (baseUrl) => {
-    const byEmail = await fetch(`${baseUrl}/api/events/1/registrations/search?keyword=sv001@example.com`);
+    const adminFetch = await createAdminRequest(baseUrl);
+    const byEmail = await adminFetch(`/api/events/1/registrations/search?keyword=sv001@example.com`);
     const emailData = await byEmail.json();
     assert.equal(byEmail.status, 200);
     assert.equal(emailData.registration.id, 1);
     assert.equal(emailData.registration.registration_code, "DK-0001");
 
-    const byStudentId = await fetch(`${baseUrl}/api/events/1/registrations/search?keyword=sv002`);
+    const byStudentId = await adminFetch(`/api/events/1/registrations/search?keyword=sv002`);
     const studentData = await byStudentId.json();
     assert.equal(byStudentId.status, 200);
     assert.equal(studentData.registration.id, 2);
 
-    const byCode = await fetch(`${baseUrl}/api/events/1/registrations/search?keyword=DK-0001`);
+    const byCode = await adminFetch(`/api/events/1/registrations/search?keyword=DK-0001`);
     const codeData = await byCode.json();
     assert.equal(byCode.status, 200);
     assert.equal(codeData.registration.id, 1);
@@ -597,7 +721,8 @@ test("GET /api/events/:id/registrations/search tìm được theo email, MSSV ho
 
 test("POST /api/events/:id/check-in/manual cập nhật thời gian check-in", async () => {
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/events/1/check-in/manual`, {
+    const adminFetch = await createAdminRequest(baseUrl);
+    const response = await adminFetch(`/api/events/1/check-in/manual`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ registration_id: 1 })
@@ -615,7 +740,8 @@ test("POST /api/events/:id/check-in/manual cập nhật thời gian check-in", a
 test("POST /api/events/:id/check-in/manual trả cảnh báo khi người tham gia đã check-in trước đó", async () => {
   await withServer(async (baseUrl) => {
     const originalCheckinTime = findRegistration(2).checked_in_at;
-    const response = await fetch(`${baseUrl}/api/events/1/check-in/manual`, {
+    const adminFetch = await createAdminRequest(baseUrl);
+    const response = await adminFetch(`/api/events/1/check-in/manual`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ registration_id: 2 })
@@ -633,7 +759,8 @@ test("POST /api/events/:id/check-in/manual trả cảnh báo khi người tham g
 
 test("POST /api/events/:id/check-in/qr quét QR hợp lệ và cập nhật thời gian check-in", async () => {
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/events/1/check-in/qr`, {
+    const adminFetch = await createAdminRequest(baseUrl);
+    const response = await adminFetch(`/api/events/1/check-in/qr`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -652,7 +779,8 @@ test("POST /api/events/:id/check-in/qr quét QR hợp lệ và cập nhật th�
 
 test("POST /api/events/:id/check-in/qr trả lỗi khi QR thuộc sự kiện khác", async () => {
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/events/1/check-in/qr`, {
+    const adminFetch = await createAdminRequest(baseUrl);
+    const response = await adminFetch(`/api/events/1/check-in/qr`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -671,7 +799,8 @@ test("POST /api/events/:id/check-in/qr trả lỗi khi QR thuộc sự kiện kh
 test("POST /api/events/:id/check-in/qr trả cảnh báo khi người tham gia đã check-in trước đó", async () => {
   await withServer(async (baseUrl) => {
     const originalCheckinTime = findRegistration(2).checked_in_at;
-    const response = await fetch(`${baseUrl}/api/events/1/check-in/qr`, {
+    const adminFetch = await createAdminRequest(baseUrl);
+    const response = await adminFetch(`/api/events/1/check-in/qr`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -691,7 +820,8 @@ test("POST /api/events/:id/check-in/qr trả cảnh báo khi người tham gia �
 
 test("POST /api/events/:id/check-in/qr trả lỗi khi QR không hợp lệ hoặc không tồn tại", async () => {
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/events/1/check-in/qr`, {
+    const adminFetch = await createAdminRequest(baseUrl);
+    const response = await adminFetch(`/api/events/1/check-in/qr`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ qr_content: "QR-KHONG-TON-TAI" })
@@ -727,7 +857,8 @@ test("POST /api/registrations đăng ký thành công, gửi email xác nhận v
 
 test("POST /api/events/:eventId/registrations/:registrationId/resend-confirmation-email gửi lại đúng QR đã chuẩn hóa và lưu lịch sử resend", async () => {
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/events/1/registrations/1/resend-confirmation-email`, {
+    const adminFetch = await createAdminRequest(baseUrl);
+    const response = await adminFetch(`/api/events/1/registrations/1/resend-confirmation-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" }
     });
@@ -752,7 +883,8 @@ test("POST /api/events/:eventId/registrations/:registrationId/resend-confirmatio
   await withServer(async (baseUrl) => {
     findRegistration(1).email = "email-khong-hop-le";
 
-    const response = await fetch(`${baseUrl}/api/events/1/registrations/1/resend-confirmation-email`, {
+    const adminFetch = await createAdminRequest(baseUrl);
+    const response = await adminFetch(`/api/events/1/registrations/1/resend-confirmation-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" }
     });
@@ -772,7 +904,8 @@ test("POST /api/events/:eventId/registrations/:registrationId/resend-confirmatio
   await withServer(async (baseUrl) => {
     forcedSendError = "SMTP unavailable";
 
-    const response = await fetch(`${baseUrl}/api/events/1/registrations/1/resend-confirmation-email`, {
+    const adminFetch = await createAdminRequest(baseUrl);
+    const response = await adminFetch(`/api/events/1/registrations/1/resend-confirmation-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" }
     });
@@ -792,7 +925,8 @@ test("POST /api/events/:eventId/registrations/:registrationId/resend-confirmatio
 
 test("POST /api/events/:id/send-feedback-links gửi link feedback cho toàn bộ người đăng ký", async () => {
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/events/1/send-feedback-links`, {
+    const adminFetch = await createAdminRequest(baseUrl);
+    const response = await adminFetch(`/api/events/1/send-feedback-links`, {
       method: "POST",
       headers: { "Content-Type": "application/json" }
     });

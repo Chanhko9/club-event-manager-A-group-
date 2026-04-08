@@ -1,33 +1,21 @@
-function getApiBaseUrl() {
-  const isLocalBrowserHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-  const isBackendOrigin = isLocalBrowserHost && window.location.port === "5000";
+var API_BASE_URL = window.AppConfig.API_BASE_URL;
 
-  if (window.location.protocol === "file:" || (isLocalBrowserHost && !isBackendOrigin)) {
-    return "http://localhost:5000/api";
-  }
-
-  return `${window.location.origin}/api`;
-}
-
-const API_BASE_URL = getApiBaseUrl();
-
-const registrationFormEl = document.querySelector(".student-form");
-const eventSelectEl = document.getElementById("event_id");
-const selectedEventInfoEl = document.getElementById("selected-event-info");
-const registrationMessageEl = document.getElementById("registration-message");
-const submitButtonEl = registrationFormEl?.querySelector('button[type="submit"]');
-const toastContainerEl = document.getElementById("toast-container");
-let activeToastTimer = null;
-
-let eventsData = [];
+var registrationFormEl = document.querySelector(".student-form");
+var eventSelectEl = document.getElementById("event_id");
+var selectedEventInfoEl = document.getElementById("selected-event-info");
+var registrationMessageEl = document.getElementById("registration-message");
+var submitButtonEl = registrationFormEl && registrationFormEl.querySelector('button[type="submit"]');
+var toastContainerEl = document.getElementById("toast-container");
+var activeToastTimer = null;
+var eventsData = [];
 
 function formatDate(dateString) {
-  const date = new Date(dateString);
+  var date = new Date(dateString);
   return date.toLocaleString("vi-VN");
 }
 
 function escapeHtml(value) {
-  return String(value ?? "")
+  return String(value == null ? "" : value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -35,63 +23,60 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-async function readJsonSafely(response) {
-  const text = await response.text();
-  if (!text) return null;
-
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    return null;
-  }
-}
-
 function getEventIdFromUrl() {
-  const params = new URLSearchParams(window.location.search);
+  var params = new URLSearchParams(window.location.search);
   return params.get("eventId");
 }
 
 function showRegistrationMessage(message, type) {
-  if (!registrationMessageEl) return;
+  if (!registrationMessageEl) {
+    return;
+  }
+
   registrationMessageEl.textContent = message;
-  registrationMessageEl.className = `form-message ${type}`;
+  registrationMessageEl.className = "form-message " + type;
 }
 
 function clearRegistrationMessage() {
-  if (!registrationMessageEl) return;
+  if (!registrationMessageEl) {
+    return;
+  }
+
   registrationMessageEl.textContent = "";
   registrationMessageEl.className = "form-message";
 }
 
-function showToast(message, type = "success") {
-  if (!toastContainerEl) return;
+function showToast(message, type) {
+  if (!toastContainerEl) {
+    return;
+  }
 
   if (activeToastTimer) {
     window.clearTimeout(activeToastTimer);
     activeToastTimer = null;
   }
 
-  const toastEl = document.createElement("div");
-  toastEl.className = `toast ${type}`;
+  var toastEl = document.createElement("div");
+  toastEl.className = "toast " + (type || "success");
   toastEl.setAttribute("role", "status");
-  toastEl.innerHTML = `
-    <div class="toast-icon">${type === "success" ? "✓" : "!"}</div>
-    <div class="toast-content">
-      <strong>${type === "success" ? "Đăng ký thành công" : "Thông báo"}</strong>
-      <span>${escapeHtml(message)}</span>
-    </div>
-  `;
+  toastEl.innerHTML = [
+    '<div class="toast-icon">' + ((type || "success") === "success" ? "✓" : "!") + '</div>',
+    '<div class="toast-content">',
+    '<strong>' + (((type || "success") === "success") ? "Đăng ký thành công" : "Thông báo") + '</strong>',
+    '<span>' + escapeHtml(message) + '</span>',
+    '</div>'
+  ].join("");
 
   toastContainerEl.innerHTML = "";
   toastContainerEl.appendChild(toastEl);
 
-  requestAnimationFrame(() => {
+  requestAnimationFrame(function () {
     toastEl.classList.add("show");
   });
 
-  activeToastTimer = window.setTimeout(() => {
+  activeToastTimer = window.setTimeout(function () {
     toastEl.classList.remove("show");
-    window.setTimeout(() => {
+    window.setTimeout(function () {
       if (toastEl.parentElement === toastContainerEl) {
         toastContainerEl.innerHTML = "";
       }
@@ -99,63 +84,58 @@ function showToast(message, type = "success") {
   }, 3200);
 }
 
-
 function renderSelectedEventInfo(eventId) {
-  const event = eventsData.find((item) => String(item.id) === String(eventId));
+  var event = eventsData.find(function (item) {
+    return String(item.id) === String(eventId);
+  });
 
   if (!event) {
     selectedEventInfoEl.innerHTML = "";
     return;
   }
 
-  selectedEventInfoEl.innerHTML = `
-    <div class="event-preview-card">
-      <h3>${escapeHtml(event.title)}</h3>
-      <p><strong>Thời gian:</strong> ${formatDate(event.event_time)}</p>
-      <p><strong>Địa điểm:</strong> ${escapeHtml(event.location)}</p>
-      <p><strong>Mô tả:</strong> ${escapeHtml(event.description || "Không có mô tả")}</p>
-    </div>
-  `;
+  selectedEventInfoEl.innerHTML = [
+    '<div class="event-preview-card">',
+    '<h3>' + escapeHtml(event.title) + '</h3>',
+    '<p><strong>Thời gian:</strong> ' + formatDate(event.event_time) + '</p>',
+    '<p><strong>Địa điểm:</strong> ' + escapeHtml(event.location) + '</p>',
+    '<p><strong>Mô tả:</strong> ' + escapeHtml(event.description || "Không có mô tả") + '</p>',
+    '</div>'
+  ].join("");
 }
 
 async function loadEventsForRegistration() {
   try {
-    const response = await fetch(`${API_BASE_URL}/events`);
-    const events = await readJsonSafely(response);
+    var response = await fetch(API_BASE_URL + "/events");
+    var events = await window.AppConfig.readJsonSafely(response);
 
     if (!response.ok) {
-      throw new Error(events?.message || "Không tải được danh sách sự kiện");
+      throw new Error((events && events.message) || "Không tải được danh sách sự kiện");
     }
 
     eventsData = Array.isArray(events) ? events : [];
 
-    eventSelectEl.innerHTML = `
-      <option value="">-- Chọn sự kiện muốn tham gia --</option>
-      ${eventsData
-        .map(
-          (event) => `
-            <option value="${event.id}">
-              ${escapeHtml(event.title)} - ${formatDate(event.event_time)}
-            </option>
-          `
-        )
-        .join("")}
-    `;
+    eventSelectEl.innerHTML = [
+      '<option value="">Chọn sự kiện</option>',
+      eventsData.map(function (event) {
+        return '<option value="' + event.id + '">' + escapeHtml(event.title) + ' - ' + formatDate(event.event_time) + '</option>';
+      }).join("")
+    ].join("");
 
-    const eventIdFromUrl = getEventIdFromUrl();
+    var eventIdFromUrl = getEventIdFromUrl();
     if (eventIdFromUrl) {
       eventSelectEl.value = eventIdFromUrl;
       renderSelectedEventInfo(eventIdFromUrl);
     }
   } catch (error) {
     console.error(error);
-    eventSelectEl.innerHTML = `<option value="">Không tải được sự kiện</option>`;
+    eventSelectEl.innerHTML = '<option value="">Không tải được sự kiện</option>';
     showRegistrationMessage("Không tải được danh sách sự kiện để đăng ký.", "error");
   }
 }
 
 async function submitRegistration(payload) {
-  const response = await fetch(`${API_BASE_URL}/registrations`, {
+  var response = await fetch(API_BASE_URL + "/registrations", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -163,10 +143,10 @@ async function submitRegistration(payload) {
     body: JSON.stringify(payload)
   });
 
-  const result = await readJsonSafely(response);
+  var result = await window.AppConfig.readJsonSafely(response);
 
   if (!response.ok) {
-    const error = new Error(result?.message || "Đăng ký thất bại");
+    var error = new Error((result && result.message) || "Đăng ký thất bại");
     error.status = response.status;
     error.payload = result;
     throw error;
@@ -176,19 +156,19 @@ async function submitRegistration(payload) {
 }
 
 if (eventSelectEl) {
-  eventSelectEl.addEventListener("change", (e) => {
+  eventSelectEl.addEventListener("change", function (event) {
     clearRegistrationMessage();
-    renderSelectedEventInfo(e.target.value);
+    renderSelectedEventInfo(event.target.value);
   });
 }
 
 if (registrationFormEl) {
-  registrationFormEl.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  registrationFormEl.addEventListener("submit", async function (event) {
+    event.preventDefault();
     clearRegistrationMessage();
 
-    const formData = new FormData(registrationFormEl);
-    const payload = {
+    var formData = new FormData(registrationFormEl);
+    var payload = {
       event_id: formData.get("event_id"),
       full_name: formData.get("full_name"),
       student_id: formData.get("student_id"),
@@ -201,11 +181,11 @@ if (registrationFormEl) {
         submitButtonEl.disabled = true;
       }
 
-      showRegistrationMessage("Hệ thống đang xử lý đăng ký...", "success");
-      const result = await submitRegistration(payload);
+      showRegistrationMessage("Đang gửi đăng ký...", "info");
+      var result = await submitRegistration(payload);
 
       registrationFormEl.reset();
-      const eventId = String(result.eventId || payload.event_id || "");
+      var eventId = String((result && result.eventId) || payload.event_id || "");
       if (eventId) {
         eventSelectEl.value = eventId;
         renderSelectedEventInfo(eventId);
@@ -213,14 +193,11 @@ if (registrationFormEl) {
         selectedEventInfoEl.innerHTML = "";
       }
 
-      showRegistrationMessage(result.message, "success");
-      showToast(result.message || "Đăng ký tham gia thành công.", "success");
+      showRegistrationMessage((result && result.message) || "Đăng ký tham gia thành công.", "success");
+      showToast((result && result.message) || "Đăng ký tham gia thành công.", "success");
     } catch (error) {
       if (error.status === 409) {
-        showRegistrationMessage(
-          error.payload?.message || "Sinh viên đã đăng ký sự kiện này rồi.",
-          "error"
-        );
+        showRegistrationMessage((error.payload && error.payload.message) || "Bạn đã đăng ký sự kiện này rồi.", "error");
       } else {
         showRegistrationMessage(error.message || "Không thể gửi đăng ký.", "error");
       }
@@ -232,8 +209,8 @@ if (registrationFormEl) {
     }
   });
 
-  registrationFormEl.addEventListener("reset", () => {
-    window.setTimeout(() => {
+  registrationFormEl.addEventListener("reset", function () {
+    window.setTimeout(function () {
       clearRegistrationMessage();
       selectedEventInfoEl.innerHTML = "";
     }, 0);

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Đăng nhập admin - Club Event Manager</title>
+  <link rel="stylesheet" href="./css/shared.css" />
+  <link rel="stylesheet" href="./css/LoginAdmin.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand" href="./index.html">
+        <span class="brand-mark">CE</span>
+        <span class="brand-copy">
+          <strong>Club Event Manager</strong>
+          <span>Khu vực quản trị</span>
+        </span>
+      </a>
+      <nav class="site-nav">
+        <a class="nav-link" href="./index.html">Trang chủ</a>
+        <a class="nav-link" href="./FormDangKy.html">Đăng ký sự kiện</a>
+        <a class="nav-link active" href="./LoginAdmin.html">Đăng nhập admin</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-wrap login-page">
+    <section class="login-card">
+      <div class="login-showcase">
+        <p class="eyebrow">Admin only</p>
+        <h1>Đăng nhập để quản trị toàn bộ hệ thống</h1>
+        <p class="login-support-text">
+          Sau khi đăng nhập, admin có thể tạo sự kiện, xem danh sách đăng ký, check-in và cấu hình form feedback.
+        </p>
+
+        <div class="login-feature-list">
+          <article>
+            <strong>Quản lý sự kiện</strong>
+            <span>Tạo, chỉnh sửa và theo dõi các sự kiện trong một nơi.</span>
+          </article>
+          <article>
+            <strong>Quản lý người tham gia</strong>
+            <span>Tra cứu đăng ký, check-in, xuất Excel và gửi email.</span>
+          </article>
+          <article>
+            <strong>Thu thập phản hồi</strong>
+            <span>Bật form feedback và theo dõi kết quả ngay trên dashboard.</span>
+          </article>
+        </div>
+      </div>
+
+      <div class="login-form-panel">
+        <div class="section-header compact-header">
+          <div>
+            <p class="section-kicker">Đăng nhập</p>
+            <h2 class="section-title">Tài khoản quản trị</h2>
+            <p class="section-text">Nhập tài khoản admin để tiếp tục.</p>
+          </div>
+        </div>
+
+        <form id="admin-login-form" class="login-form stack-form">
+          <div id="login-message" class="form-message" aria-live="polite"></div>
+
+          <div class="form-group">
+            <label for="identifier">Tài khoản admin</label>
+            <input id="identifier" name="identifier" type="text" placeholder="Tên đăng nhập hoặc email" autocomplete="username" required />
+          </div>
+
+          <div class="form-group">
+            <label for="password">Mật khẩu</label>
+            <input id="password" name="password" type="password" placeholder="Nhập mật khẩu" autocomplete="current-password" required />
+          </div>
+
+          <div class="form-actions">
+            <button id="submit-login-button" type="submit" class="primary-btn">Đăng nhập</button>
+            <a class="outline-btn" href="./index.html">Về trang chủ</a>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="./js/app-config.js"></script>
+  <script src="./js/LoginAdmin.js"></script>
+</body>
+</html>
