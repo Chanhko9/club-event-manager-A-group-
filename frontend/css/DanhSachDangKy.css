@@ -231,14 +231,16 @@ body {
 }
 
 .filter-panel,
-.checkin-panel {
+.checkin-panel,
+.report-panel {
   padding: 20px;
   border-radius: 20px;
   background: var(--surface-soft);
   border: 1px solid var(--border);
 }
 
-.checkin-panel {
+.checkin-panel,
+.report-panel {
   margin-top: 24px;
 }
 
@@ -356,6 +358,62 @@ body {
 .manual-result-grid strong {
   line-height: 1.6;
   word-break: break-word;
+}
+
+.report-summary {
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.report-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.report-card {
+  padding: 18px;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+}
+
+.report-card strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.5rem;
+}
+
+.report-table-shell {
+  padding: 20px;
+  border-radius: 20px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+}
+
+.report-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.report-table-header h3 {
+  margin: 4px 0 0;
+  font-size: 1.1rem;
+  color: var(--primary);
+}
+
+.report-table-wrapper {
+  margin-top: 0;
+}
+
+.report-empty-cell {
+  text-align: center;
+  color: var(--muted);
+  padding: 18px;
 }
 
 .manual-result-actions {
@@ -527,6 +585,7 @@ body {
 
   .event-info-grid,
   .manual-result-grid,
+  .report-summary-grid,
   .form-header {
     grid-template-columns: 1fr;
   }
@@ -573,8 +632,10 @@ body {
   .content-card,
   .filter-panel,
   .checkin-panel,
+  .report-panel,
   .event-preview-card,
   .manual-checkin-result,
+  .report-table-shell,
   .empty-state {
     padding: 20px;
     border-radius: 18px;
@@ -610,7 +671,8 @@ body {
   }
 
   .event-info-header,
-  .manual-result-header {
+  .manual-result-header,
+  .report-table-header {
     flex-direction: column;
   }
 
@@ -634,8 +696,10 @@ body {
   .content-card,
   .filter-panel,
   .checkin-panel,
+  .report-panel,
   .event-preview-card,
   .manual-checkin-result,
+  .report-table-shell,
   .empty-state {
     padding: 16px;
     border-radius: 16px;

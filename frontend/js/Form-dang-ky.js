@@ -192,6 +192,8 @@ if (registrationFormEl) {
       event_id: formData.get("event_id"),
       full_name: formData.get("full_name"),
       student_id: formData.get("student_id"),
+      class_name: formData.get("class_name"),
+      faculty: formData.get("faculty"),
       email: formData.get("email"),
       phone: formData.get("phone")
     };

@@ -13,6 +13,8 @@ const API_BASE_URL = getApiBaseUrl();
 
 const eventSelectorEl = document.getElementById("event-selector");
 const selectedEventInfoEl = document.getElementById("selected-event-info");
+const reportSummaryEl = document.getElementById("report-summary");
+const reportSummaryMessageEl = document.getElementById("report-summary-message");
 const registrationTableBodyEl = document.getElementById("registration-table-body");
 const pageMessageEl = document.getElementById("page-message");
 const registrationStatusEl = document.getElementById("registration-status");
@@ -48,6 +50,7 @@ let eventsData = [];
 let currentRegistrations = [];
 let currentTotalRegistrations = 0;
 let currentEvent = null;
+let currentEventReport = null;
 let currentEventId = "";
 let currentSearchResult = null;
 let qrScannerStream = null;
@@ -121,6 +124,14 @@ function showPageMessage(message, type) {
 
 function clearPageMessage() {
   clearMessage(pageMessageEl);
+}
+
+function showReportSummaryMessage(message, type) {
+  showMessage(reportSummaryMessageEl, message, type);
+}
+
+function clearReportSummaryMessage() {
+  clearMessage(reportSummaryMessageEl);
 }
 
 function showManualCheckinMessage(message, type) {
@@ -228,6 +239,79 @@ function renderSelectedEventInfo(event) {
       <div>
         <span class="info-label">Tổng đăng ký hiện có</span>
         <strong>${Number(event.registration_count || 0)} người</strong>
+      </div>
+    </div>
+  `;
+}
+
+function renderEventReport(summary, event = currentEvent) {
+  if (!reportSummaryEl) return;
+
+  if (!event) {
+    reportSummaryEl.className = "report-summary empty-card";
+    reportSummaryEl.innerHTML = "Chưa có báo cáo để hiển thị.";
+    return;
+  }
+
+  if (!summary) {
+    reportSummaryEl.className = "report-summary empty-card";
+    reportSummaryEl.innerHTML = "Đang tải báo cáo thống kê cho sự kiện đã chọn...";
+    return;
+  }
+
+  const totalRegistrations = Number(summary.total_registrations || 0);
+  const totalCheckins = Number(summary.total_checkins || 0);
+  const attendanceRate = totalRegistrations > 0 ? `${Math.round((totalCheckins / totalRegistrations) * 100)}%` : "0%";
+  const courseStatistics = Array.isArray(summary.course_statistics) ? summary.course_statistics : [];
+
+  reportSummaryEl.className = "report-summary";
+  reportSummaryEl.innerHTML = `
+    <div class="report-summary-grid">
+      <div class="report-card">
+        <span class="info-label">Tổng người đăng ký</span>
+        <strong>${totalRegistrations}</strong>
+      </div>
+      <div class="report-card">
+        <span class="info-label">Tổng người đã check-in</span>
+        <strong>${totalCheckins}</strong>
+      </div>
+      <div class="report-card">
+        <span class="info-label">Tỷ lệ tham dự</span>
+        <strong>${attendanceRate}</strong>
+      </div>
+    </div>
+
+    <div class="report-table-shell">
+      <div class="report-table-header">
+        <div>
+          <p class="mini-label">Thống kê theo khóa học</p>
+          <h3>${escapeHtml(event.title)}</h3>
+        </div>
+        <span class="event-id-badge">#${event.id}</span>
+      </div>
+      <div class="table-wrapper report-table-wrapper">
+        <table class="registration-table report-table">
+          <thead>
+            <tr>
+              <th>Khóa học</th>
+              <th>Số lượng đăng ký</th>
+              <th>Số lượng check-in</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${courseStatistics.length
+              ? courseStatistics
+                  .map((item) => `
+                    <tr>
+                      <td>${escapeHtml(item.course_name || "Chưa cập nhật")}</td>
+                      <td>${Number(item.registration_count || 0)}</td>
+                      <td>${Number(item.checkin_count || 0)}</td>
+                    </tr>
+                  `)
+                  .join("")
+              : '<tr><td colspan="3" class="report-empty-cell">Sự kiện này chưa có dữ liệu đăng ký để thống kê.</td></tr>'}
+          </tbody>
+        </table>
       </div>
     </div>
   `;
@@ -413,6 +497,17 @@ async function loadEvents() {
   return Array.isArray(result) ? result : [];
 }
 
+async function loadEventReportSummary(eventId) {
+  const response = await fetch(`${API_BASE_URL}/events/${eventId}/report-summary`);
+  const result = await readJsonSafely(response);
+
+  if (!response.ok) {
+    throw new Error(result?.message || "Không thể tải báo cáo thống kê của sự kiện");
+  }
+
+  return result || {};
+}
+
 async function loadRegistrationsByEvent(eventId, searchQuery = "", checkin = "all") {
   const url = new URL(`${API_BASE_URL}/events/${eventId}/registrations`);
   if (searchQuery) {
@@ -524,9 +619,10 @@ function syncSearchResult(updatedRegistration) {
   renderManualCheckinResult(currentSearchResult);
 }
 
-async function refreshCurrentEventRegistrations() {
+async function refreshCurrentEventRegistrations(options = {}) {
   if (!currentEventId || !currentEvent) return;
 
+  const { refreshReport = false } = options;
   const result = await loadRegistrationsByEvent(
     currentEventId,
     String(searchInputEl?.value || ""),
@@ -539,14 +635,23 @@ async function refreshCurrentEventRegistrations() {
   currentEvent.registration_count = currentTotalRegistrations;
   renderSelectedEventInfo(currentEvent);
   updateRegistrationView();
+
+  if (refreshReport) {
+    const reportResult = await loadEventReportSummary(currentEventId);
+    currentEventReport = reportResult.summary || null;
+    clearReportSummaryMessage();
+    renderEventReport(currentEventReport, currentEvent);
+  }
 }
 
-async function handleEventChange(eventId) {
+async function handleEventChange(eventId, options = {}) {
+  const { refreshReport = true } = options;
   currentEventId = String(eventId || "");
   clearManualCheckinMessage();
   clearManualCheckinResult();
   clearQrCheckinMessage();
   clearQrCheckinResult();
+  clearReportSummaryMessage();
   stopQrScanner();
 
   const selectedEvent = eventsData.find((item) => String(item.id) === String(eventId));
@@ -560,11 +665,19 @@ async function handleEventChange(eventId) {
     currentTotalRegistrations = 0;
     toggleListState(false);
     setHeroState({ status: "Chưa có dữ liệu" });
+    currentEventReport = null;
+    renderEventReport(null, null);
     updateQueryString("");
     return;
   }
 
   renderSelectedEventInfo(selectedEvent);
+  if (refreshReport) {
+    currentEventReport = null;
+    renderEventReport(null, selectedEvent);
+  } else {
+    renderEventReport(currentEventReport, selectedEvent);
+  }
   registrationStatusEl.textContent = "Đang tải danh sách người đăng ký...";
   setHeroState({
     eventTitle: selectedEvent.title,
@@ -592,12 +705,28 @@ async function handleEventChange(eventId) {
     currentEvent = selectedEvent;
     renderSelectedEventInfo(selectedEvent);
     updateRegistrationView();
+
+    if (refreshReport) {
+      try {
+        const reportResult = await loadEventReportSummary(eventId);
+        currentEventReport = reportResult.summary || null;
+        clearReportSummaryMessage();
+        renderEventReport(currentEventReport, selectedEvent);
+      } catch (reportError) {
+        currentEventReport = null;
+        renderEventReport(currentEventReport, selectedEvent);
+        showReportSummaryMessage(reportError.message || "Không thể tải báo cáo thống kê của sự kiện.", "error");
+      }
+    }
+
     updateQueryString(eventId);
   } catch (error) {
     registrationTableBodyEl.innerHTML = "";
     currentRegistrations = [];
     currentTotalRegistrations = 0;
     toggleListState(false);
+    currentEventReport = null;
+    renderEventReport(currentEventReport, selectedEvent);
     registrationStatusEl.textContent = "Không tải được danh sách người đăng ký.";
     setHeroState({
       eventTitle: selectedEvent.title,
@@ -639,7 +768,7 @@ async function processQrCheckin(qrValue, source = "manual") {
     syncRegistrationInCurrentList(updatedRegistration);
     syncSearchResult(updatedRegistration);
     renderQrCheckinResult(updatedRegistration);
-    await refreshCurrentEventRegistrations();
+    await refreshCurrentEventRegistrations({ refreshReport: true });
 
     const successMessage = result.message || "Quét QR thành công. Đã cập nhật trạng thái check-in.";
     showQrCheckinMessage(successMessage, "success");
@@ -810,7 +939,7 @@ async function handleManualCheckinConfirm() {
     const updatedRegistration = result.registration;
     syncRegistrationInCurrentList(updatedRegistration);
     renderManualCheckinResult(updatedRegistration);
-    await refreshCurrentEventRegistrations();
+    await refreshCurrentEventRegistrations({ refreshReport: true });
     const successMessage = result.message || "Check-in thủ công thành công.";
     showManualCheckinMessage(successMessage, "success");
     showToast(successMessage, "success");
@@ -903,7 +1032,7 @@ if (searchInputEl) {
   searchInputEl.addEventListener("input", async () => {
     clearPageMessage();
     if (!currentEvent) return;
-    await handleEventChange(currentEvent.id);
+    await handleEventChange(currentEvent.id, { refreshReport: false });
   });
 }
 
@@ -911,7 +1040,7 @@ if (checkinFilterEl) {
   checkinFilterEl.addEventListener("change", async () => {
     clearPageMessage();
     if (!currentEvent) return;
-    await handleEventChange(currentEvent.id);
+    await handleEventChange(currentEvent.id, { refreshReport: false });
   });
 }
 
