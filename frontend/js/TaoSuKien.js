@@ -1,15 +1,4 @@
-function getApiBaseUrl() {
-  const isLocalBrowserHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-  const isBackendOrigin = isLocalBrowserHost && window.location.port === "5000";
-
-  if (window.location.protocol === "file:" || (isLocalBrowserHost && !isBackendOrigin)) {
-    return "http://localhost:5000/api";
-  }
-
-  return `${window.location.origin}/api`;
-}
-
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = window.AppConfig.API_BASE_URL;
 const API_EVENTS_URL = `${API_BASE_URL}/events`;
 
 const statusEl = document.getElementById("status");
@@ -24,11 +13,37 @@ const titleEl = document.getElementById("title");
 const eventTimeEl = document.getElementById("event_time");
 const locationEl = document.getElementById("location");
 const descriptionEl = document.getElementById("description");
+const adminSessionBadgeEl = document.getElementById("admin-session-badge");
+const adminLogoutBtnEl = document.getElementById("admin-logout-btn");
 
 let editingEventId = null;
 let currentEvents = [];
 let registrationStateByEvent = {};
 let feedbackStateByEvent = {};
+
+
+function renderAdminSession(admin) {
+  if (!adminSessionBadgeEl) return;
+  const displayName = admin?.full_name || admin?.username || 'admin';
+  const roleText = admin?.role ? ` (${admin.role})` : '';
+  adminSessionBadgeEl.textContent = `Admin: ${displayName}${roleText}`;
+}
+
+async function initializeAdminPage() {
+  try {
+    const session = await window.AdminAuth.ensureAdminSession();
+    renderAdminSession(session.admin);
+
+    adminLogoutBtnEl?.addEventListener("click", async () => {
+      await window.AdminAuth.logoutAdmin();
+    });
+
+    setCreateMode();
+    await loadEvents();
+  } catch (error) {
+    console.error(error);
+  }
+}
 
 function formatDate(dateString) {
   const date = new Date(dateString);
@@ -954,5 +969,4 @@ if (eventListEl) {
   });
 }
 
-setCreateMode();
-loadEvents();
+initializeAdminPage();

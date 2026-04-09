@@ -25,22 +25,3 @@ Dự án web quản lý sự kiện câu lạc bộ.
 \- `backend/`: server và API
 
 \- `database/`: file SQL tạo bảng và dữ liệu mẫu
-
-
-
-\## Sprint 1
-
-\- Tạo sự kiện
-
-\- Xem danh sách sự kiện
-
-\- Form đăng ký tham gia
-
-\- Validate dữ liệu đăng ký
-
-\- Chống đăng ký trùng
-
-\- Xem danh sách người đăng ký
-
-\- Xuất danh sách đăng ký
-

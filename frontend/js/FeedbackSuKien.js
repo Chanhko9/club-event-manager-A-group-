@@ -1,35 +1,24 @@
-function getApiBaseUrl() {
-  const isLocalBrowserHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-  const isBackendOrigin = isLocalBrowserHost && window.location.port === "5000";
+var API_BASE_URL = window.AppConfig.API_BASE_URL;
 
-  if (window.location.protocol === "file:" || (isLocalBrowserHost && !isBackendOrigin)) {
-    return "http://localhost:5000/api";
-  }
+var accessFormEl = document.getElementById("access-form");
+var feedbackFormEl = document.getElementById("feedback-form");
+var eventSelectEl = document.getElementById("event_id");
+var selectedEventInfoEl = document.getElementById("selected-event-info");
+var pageMessageEl = document.getElementById("page-message");
+var feedbackSectionEl = document.getElementById("feedback-form-section");
+var submittedSectionEl = document.getElementById("submitted-section");
+var participantInfoEl = document.getElementById("participant-info");
+var submittedMessageEl = document.getElementById("submitted-message");
+var submittedSummaryEl = document.getElementById("submitted-summary");
+var satisfactionQuestionLabelEl = document.getElementById("satisfaction-question-label");
+var commentQuestionLabelEl = document.getElementById("comment-question-label");
+var submitFeedbackButtonEl = document.getElementById("submit-feedback-button");
 
-  return `${window.location.origin}/api`;
-}
-
-const API_BASE_URL = getApiBaseUrl();
-
-const accessFormEl = document.getElementById("access-form");
-const feedbackFormEl = document.getElementById("feedback-form");
-const eventSelectEl = document.getElementById("event_id");
-const selectedEventInfoEl = document.getElementById("selected-event-info");
-const pageMessageEl = document.getElementById("page-message");
-const feedbackSectionEl = document.getElementById("feedback-form-section");
-const submittedSectionEl = document.getElementById("submitted-section");
-const participantInfoEl = document.getElementById("participant-info");
-const submittedMessageEl = document.getElementById("submitted-message");
-const submittedSummaryEl = document.getElementById("submitted-summary");
-const satisfactionQuestionLabelEl = document.getElementById("satisfaction-question-label");
-const commentQuestionLabelEl = document.getElementById("comment-question-label");
-const submitFeedbackButtonEl = document.getElementById("submit-feedback-button");
-
-let eventsData = [];
-let currentAccessContext = null;
+var eventsData = [];
+var currentAccessContext = null;
 
 function escapeHtml(value) {
-  return String(value ?? "")
+  return String(value == null ? "" : value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -38,29 +27,21 @@ function escapeHtml(value) {
 }
 
 function formatDate(dateString) {
-  if (!dateString) return "Chưa cập nhật";
+  if (!dateString) {
+    return "Chưa cập nhật";
+  }
+
   return new Date(dateString).toLocaleString("vi-VN");
 }
 
-async function readJsonSafely(response) {
-  const text = await response.text();
-  if (!text) return null;
-
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    return null;
-  }
-}
-
 function getEventIdFromUrl() {
-  const params = new URLSearchParams(window.location.search);
+  var params = new URLSearchParams(window.location.search);
   return params.get("eventId");
 }
 
 function showMessage(message, type) {
   pageMessageEl.textContent = message;
-  pageMessageEl.className = `form-message ${type}`;
+  pageMessageEl.className = "form-message " + type;
 }
 
 function clearMessage() {
@@ -69,63 +50,57 @@ function clearMessage() {
 }
 
 function renderSelectedEventInfo(eventId) {
-  const event = eventsData.find((item) => String(item.id) === String(eventId));
+  var event = eventsData.find(function (item) {
+    return String(item.id) === String(eventId);
+  });
 
   if (!event) {
     selectedEventInfoEl.innerHTML = "";
     return;
   }
 
-  selectedEventInfoEl.innerHTML = `
-    <h3>${escapeHtml(event.title)}</h3>
-    <p><strong>Thời gian:</strong> ${formatDate(event.event_time)}</p>
-    <p><strong>Địa điểm:</strong> ${escapeHtml(event.location)}</p>
-    <p><strong>Mở feedback:</strong> ${event.feedback_enabled ? "Có" : "Chưa mở"}</p>
-  `;
+  selectedEventInfoEl.innerHTML = [
+    '<h3>' + escapeHtml(event.title) + '</h3>',
+    '<p><strong>Thời gian:</strong> ' + formatDate(event.event_time) + '</p>',
+    '<p><strong>Địa điểm:</strong> ' + escapeHtml(event.location) + '</p>',
+    '<p><strong>Trạng thái feedback:</strong> ' + (event.feedback_enabled ? "Đang mở" : "Chưa mở") + '</p>'
+  ].join("");
 }
 
 function renderSubmittedState(message, response) {
   submittedSectionEl.classList.remove("hidden");
   submittedMessageEl.textContent = message || "Bạn đã gửi feedback cho sự kiện này rồi.";
   submittedSummaryEl.innerHTML = response
-    ? `
-      <p><strong>Mức độ hài lòng:</strong> ${"★".repeat(Number(response.satisfaction_rating || 0))}</p>
-      <p><strong>Góp ý:</strong> ${escapeHtml(response.comment || "Không có góp ý")}</p>
-      <p><strong>Thời gian gửi:</strong> ${formatDate(response.created_at)}</p>
-    `
-    : `<p>Hệ thống đã ghi nhận phản hồi của bạn.</p>`;
+    ? [
+        '<p><strong>Mức độ hài lòng:</strong> ' + "★".repeat(Number(response.satisfaction_rating || 0)) + '</p>',
+        '<p><strong>Góp ý:</strong> ' + escapeHtml(response.comment || "Không có góp ý") + '</p>',
+        '<p><strong>Thời gian gửi:</strong> ' + formatDate(response.created_at) + '</p>'
+      ].join("")
+    : '<p>Hệ thống đã ghi nhận phản hồi của bạn.</p>';
 }
 
 function setFeedbackQuestions(feedbackForm) {
-  satisfactionQuestionLabelEl.textContent =
-    feedbackForm?.satisfaction_question || "Mức độ hài lòng của bạn về sự kiện là gì?";
-  commentQuestionLabelEl.textContent =
-    feedbackForm?.comment_question || "Bạn có góp ý gì để sự kiện sau tốt hơn không?";
+  satisfactionQuestionLabelEl.textContent = (feedbackForm && feedbackForm.satisfaction_question) || "Mức độ hài lòng của bạn";
+  commentQuestionLabelEl.textContent = (feedbackForm && feedbackForm.comment_question) || "Góp ý của bạn";
 }
 
 async function loadEvents() {
-  const response = await fetch(`${API_BASE_URL}/events`);
-  const result = await readJsonSafely(response);
+  var response = await fetch(API_BASE_URL + "/events");
+  var result = await window.AppConfig.readJsonSafely(response);
 
   if (!response.ok) {
-    throw new Error(result?.message || "Không tải được danh sách sự kiện.");
+    throw new Error((result && result.message) || "Không tải được danh sách sự kiện.");
   }
 
   eventsData = Array.isArray(result) ? result : [];
-  eventSelectEl.innerHTML = `
-    <option value="">-- Chọn sự kiện đã tham gia --</option>
-    ${eventsData
-      .map(
-        (event) => `
-          <option value="${event.id}">
-            ${escapeHtml(event.title)} ${event.feedback_enabled ? "" : "(chưa mở feedback)"}
-          </option>
-        `
-      )
-      .join("")}
-  `;
+  eventSelectEl.innerHTML = [
+    '<option value="">Chọn sự kiện</option>',
+    eventsData.map(function (event) {
+      return '<option value="' + event.id + '">' + escapeHtml(event.title) + (event.feedback_enabled ? "" : " (chưa mở feedback)") + '</option>';
+    }).join("")
+  ].join("");
 
-  const eventIdFromUrl = getEventIdFromUrl();
+  var eventIdFromUrl = getEventIdFromUrl();
   if (eventIdFromUrl) {
     eventSelectEl.value = eventIdFromUrl;
     renderSelectedEventInfo(eventIdFromUrl);
@@ -133,7 +108,7 @@ async function loadEvents() {
 }
 
 async function requestFeedbackAccess(payload) {
-  const response = await fetch(`${API_BASE_URL}/events/${payload.event_id}/feedback-access`, {
+  var response = await fetch(API_BASE_URL + "/events/" + payload.event_id + "/feedback-access", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -141,10 +116,10 @@ async function requestFeedbackAccess(payload) {
     body: JSON.stringify(payload)
   });
 
-  const result = await readJsonSafely(response);
+  var result = await window.AppConfig.readJsonSafely(response);
 
   if (!response.ok) {
-    const error = new Error(result?.message || "Không thể xác minh người tham gia.");
+    var error = new Error((result && result.message) || "Không thể xác minh người tham gia.");
     error.status = response.status;
     error.payload = result;
     throw error;
@@ -154,7 +129,7 @@ async function requestFeedbackAccess(payload) {
 }
 
 async function submitFeedback(payload) {
-  const response = await fetch(`${API_BASE_URL}/events/${payload.event_id}/feedback-responses`, {
+  var response = await fetch(API_BASE_URL + "/events/" + payload.event_id + "/feedback-responses", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -162,10 +137,10 @@ async function submitFeedback(payload) {
     body: JSON.stringify(payload)
   });
 
-  const result = await readJsonSafely(response);
+  var result = await window.AppConfig.readJsonSafely(response);
 
   if (!response.ok) {
-    const error = new Error(result?.message || "Không thể gửi feedback.");
+    var error = new Error((result && result.message) || "Không thể gửi feedback.");
     error.status = response.status;
     error.payload = result;
     throw error;
@@ -174,81 +149,89 @@ async function submitFeedback(payload) {
   return result;
 }
 
-eventSelectEl?.addEventListener("change", (event) => {
-  clearMessage();
-  renderSelectedEventInfo(event.target.value);
-  feedbackSectionEl.classList.add("hidden");
-  submittedSectionEl.classList.add("hidden");
-});
+if (eventSelectEl) {
+  eventSelectEl.addEventListener("change", function (event) {
+    clearMessage();
+    renderSelectedEventInfo(event.target.value);
+    feedbackSectionEl.classList.add("hidden");
+    submittedSectionEl.classList.add("hidden");
+  });
+}
 
-accessFormEl?.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  clearMessage();
-  feedbackSectionEl.classList.add("hidden");
-  submittedSectionEl.classList.add("hidden");
+if (accessFormEl) {
+  accessFormEl.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    clearMessage();
+    feedbackSectionEl.classList.add("hidden");
+    submittedSectionEl.classList.add("hidden");
 
-  const formData = new FormData(accessFormEl);
-  const payload = {
-    event_id: formData.get("event_id"),
-    student_id: formData.get("student_id"),
-    email: formData.get("email")
-  };
+    var formData = new FormData(accessFormEl);
+    var payload = {
+      event_id: formData.get("event_id"),
+      student_id: formData.get("student_id"),
+      email: formData.get("email")
+    };
 
-  try {
-    showMessage("Đang xác minh thông tin tham gia...", "success");
-    const result = await requestFeedbackAccess(payload);
+    try {
+      showMessage("Đang xác minh thông tin...", "info");
+      var result = await requestFeedbackAccess(payload);
 
-    currentAccessContext = payload;
-    participantInfoEl.textContent = `Người gửi: ${result.participant.full_name} - ${result.participant.student_id} - ${result.participant.email}`;
-    setFeedbackQuestions(result.feedbackForm);
-    feedbackFormEl.reset();
+      currentAccessContext = payload;
+      participantInfoEl.textContent = "Người gửi: " + result.participant.full_name + " • " + result.participant.student_id + " • " + result.participant.email;
+      setFeedbackQuestions(result.feedbackForm);
+      feedbackFormEl.reset();
 
-    if (result.hasSubmitted) {
-      renderSubmittedState("Bạn đã gửi feedback cho sự kiện này rồi.", result.feedbackResponse);
-      showMessage("Hệ thống đã tìm thấy feedback trước đó của bạn.", "success");
+      if (result.hasSubmitted) {
+        renderSubmittedState("Bạn đã gửi feedback cho sự kiện này rồi.", result.feedbackResponse);
+        showMessage("Đã tìm thấy phản hồi trước đó của bạn.", "success");
+        return;
+      }
+
+      feedbackSectionEl.classList.remove("hidden");
+      showMessage("Xác minh thành công. Bạn có thể gửi feedback ngay bây giờ.", "success");
+    } catch (error) {
+      showMessage(error.message || "Không thể xác minh người tham gia.", "error");
+      console.error(error);
+    }
+  });
+}
+
+if (feedbackFormEl) {
+  feedbackFormEl.addEventListener("submit", async function (event) {
+    event.preventDefault();
+
+    if (!(currentAccessContext && currentAccessContext.event_id)) {
+      showMessage("Vui lòng xác minh thông tin trước khi gửi feedback.", "error");
       return;
     }
 
-    feedbackSectionEl.classList.remove("hidden");
-    showMessage("Xác minh thành công. Bạn có thể gửi feedback ngay bây giờ.", "success");
-  } catch (error) {
-    showMessage(error.message || "Không thể xác minh người tham gia.", "error");
-    console.error(error);
-  }
-});
+    var formData = new FormData(feedbackFormEl);
+    var payload = {
+      event_id: currentAccessContext.event_id,
+      student_id: currentAccessContext.student_id,
+      email: currentAccessContext.email,
+      satisfaction_rating: formData.get("satisfaction_rating"),
+      comment: formData.get("comment")
+    };
 
-feedbackFormEl?.addEventListener("submit", async (event) => {
-  event.preventDefault();
+    try {
+      submitFeedbackButtonEl.disabled = true;
+      showMessage("Đang gửi feedback...", "info");
 
-  if (!currentAccessContext?.event_id) {
-    showMessage("Vui lòng xác minh người tham gia trước khi gửi feedback.", "error");
-    return;
-  }
+      var result = await submitFeedback(payload);
+      feedbackSectionEl.classList.add("hidden");
+      renderSubmittedState(result.message, result.feedbackResponse);
+      showMessage((result && result.message) || "Gửi feedback thành công.", "success");
+    } catch (error) {
+      showMessage(error.message || "Không thể gửi feedback.", "error");
+      console.error(error);
+    } finally {
+      submitFeedbackButtonEl.disabled = false;
+    }
+  });
+}
 
-  const formData = new FormData(feedbackFormEl);
-  const payload = {
-    ...currentAccessContext,
-    satisfaction_rating: formData.get("satisfaction_rating"),
-    comment: formData.get("comment")
-  };
-
-  try {
-    submitFeedbackButtonEl.disabled = true;
-    showMessage("Đang gửi feedback...", "success");
-
-    const result = await submitFeedback(payload);
-    feedbackSectionEl.classList.add("hidden");
-    renderSubmittedState(result.message, result.feedbackResponse);
-    showMessage(result.message || "Gửi feedback thành công.", "success");
-  } catch (error) {
-    showMessage(error.message || "Không thể gửi feedback.", "error");
-    console.error(error);
-  } finally {
-    submitFeedbackButtonEl.disabled = false;
-  }
-});
-
-loadEvents().catch((error) => {
+loadEvents().catch(function (error) {
   showMessage(error.message || "Không tải được danh sách sự kiện.", "error");
   console.error(error);
 });

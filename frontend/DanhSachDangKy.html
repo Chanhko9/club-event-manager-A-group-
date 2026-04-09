@@ -3,86 +3,103 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Danh sách người đăng ký</title>
+  <title>Danh sách đăng ký - Club Event Manager</title>
+  <link rel="stylesheet" href="./css/shared.css" />
   <link rel="stylesheet" href="./css/DanhSachDangKy.css" />
 </head>
 <body>
-  <main class="page-shell">
-    <section class="hero-card">
-      <div class="hero-content">
-        <p class="hero-badge">Club Event Manager</p>
-        <h1>Danh sách người đăng ký sự kiện</h1>
-        <p class="hero-text">
-          Theo dõi số lượng người tham gia, quét QR check-in ngay tại cổng sự kiện, tra cứu nhanh theo từng sự kiện và check-in thủ công
-          bằng mã đăng ký, email hoặc MSSV ngay trên màn hình quản trị.
-        </p>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand" href="./index.html">
+        <span class="brand-mark">CE</span>
+        <span class="brand-copy">
+          <strong>Club Event Manager</strong>
+          <span>Quản lý người tham gia</span>
+        </span>
+      </a>
 
-        <div class="stat-grid">
-          <div class="stat-card">
-            <span class="stat-label">Sự kiện đang xem</span>
-            <strong id="hero-event-title">Chưa chọn sự kiện</strong>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Số người đăng ký</span>
-            <strong id="hero-registration-count">0 người</strong>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Trạng thái</span>
-            <strong id="hero-registration-status">Đang chờ tải dữ liệu</strong>
-          </div>
-        </div>
+      <nav class="site-nav">
+        <a class="nav-link" href="./index.html">Trang chủ</a>
+        <a class="nav-link" href="./TaoSuKien.html">Quản lý sự kiện</a>
+        <a class="nav-link active" href="./DanhSachDangKy.html">Danh sách đăng ký</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-wrap registrations-admin-page">
+    <section class="page-hero compact">
+      <div class="hero-copy">
+        <p class="eyebrow">Registration dashboard</p>
+        <h1>Quản lý người tham gia và check-in sự kiện</h1>
+        <p class="page-subtitle">
+          Chọn sự kiện để xem danh sách đăng ký, quét QR check-in, tra cứu nhanh và xử lý danh sách người tham gia ngay trên một màn hình.
+        </p>
+      </div>
+
+      <div class="hero-side stat-grid compact-stats">
+        <article class="stat-card">
+          <span class="stat-label">Sự kiện đang xem</span>
+          <strong id="hero-event-title">Chưa chọn sự kiện</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">Số người đăng ký</span>
+          <strong id="hero-registration-count">0 người</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">Trạng thái</span>
+          <strong id="hero-registration-status">Sẵn sàng</strong>
+        </article>
       </div>
     </section>
 
     <section class="content-card">
       <div class="form-header">
         <div>
-          <p class="section-tag">Quản trị đăng ký</p>
-          <h2>Tra cứu danh sách người tham gia</h2>
+          <p class="section-kicker">Điều phối đăng ký</p>
+          <h2 class="section-title">Danh sách người tham gia</h2>
           <p class="section-text">
-            Chọn đúng sự kiện để xem danh sách đã đăng ký. Dữ liệu được liên kết trực tiếp
-            với sự kiện đang chọn trong hệ thống.
+            Lọc theo sự kiện, tìm kiếm theo từ khoá và thao tác check-in ngay tại đây.
           </p>
         </div>
+
         <div class="top-actions">
+          <span id="admin-session-badge" class="admin-session-badge">Admin</span>
           <a class="secondary-btn" href="./TaoSuKien.html">Quay lại quản lý sự kiện</a>
-          <a id="registration-form-link" class="primary-btn" href="./FormDangKy.html">Mở form đăng ký</a>
+          <a id="registration-form-link" class="outline-btn" href="./FormDangKy.html">Mở form công khai</a>
+          <button type="button" id="admin-logout-btn" class="ghost-btn">Đăng xuất</button>
         </div>
       </div>
 
       <div id="page-message" class="form-message" aria-live="polite"></div>
 
       <div class="filter-panel">
-  <div class="form-group">
-    <label for="event-selector">Chọn sự kiện</label>
-    <select id="event-selector"></select>
-    <small>Danh sách sẽ tự động cập nhật theo sự kiện được chọn.</small>
-  </div>
+        <div class="form-group">
+          <label for="event-selector">Sự kiện</label>
+          <select id="event-selector"></select>
+        </div>
 
-  <div class="form-group">
-    <label for="search-input">Tìm kiếm người đăng ký</label>
-    <input
-      type="text"
-      id="search-input"
-      placeholder="Nhập họ tên, MSSV, email hoặc số điện thoại"
-      autocomplete="off"
-    />
-    <small>Tìm kiếm theo thông tin người đăng ký trong sự kiện đang chọn.</small>
-  </div>
+        <div class="form-group">
+          <label for="search-input">Tìm kiếm</label>
+          <input
+            type="text"
+            id="search-input"
+            placeholder="Họ tên, MSSV, email hoặc số điện thoại"
+            autocomplete="off"
+          />
+        </div>
 
-  <div class="form-group">
-    <label for="checkin-filter">Lọc trạng thái check-in</label>
-    <select id="checkin-filter">
-      <option value="all">Tất cả</option>
-      <option value="checked_in">Đã check-in</option>
-      <option value="not_checked_in">Chưa check-in</option>
-    </select>
-    <small>Lọc danh sách theo trạng thái tham dự.</small>
-  </div>
-</div>
+        <div class="form-group filter-status-group">
+          <label for="checkin-filter">Trạng thái check-in</label>
+          <select id="checkin-filter">
+            <option value="all">Tất cả</option>
+            <option value="checked_in">Đã check-in</option>
+            <option value="not_checked_in">Chưa check-in</option>
+          </select>
+        </div>
+      </div>
 
       <div id="selected-event-info" class="event-preview-card empty-card">
-        Chưa có sự kiện nào để hiển thị.
+        Chọn một sự kiện để xem chi tiết.
       </div>
 
       <section class="report-panel">
@@ -100,32 +117,46 @@
       <section class="checkin-panel">
         <div class="checkin-panel-header">
           <div>
-            <p class="section-tag">Check-in QR</p>
-            <h2>Quét mã QR người tham gia</h2>
-            <p class="section-text">
-              Sử dụng thiết bị check-in để quét mã QR từ vé tham dự. Khi quét thành công, hệ thống sẽ hiển thị
-              thông tin người tham gia và tự động cập nhật trạng thái “Đã check-in” nếu đúng sự kiện hiện tại.
-            </p>
+            <p class="section-kicker">Check-in bằng QR</p>
+            <h2 class="section-title">Quét nhanh tại cổng sự kiện</h2>
           </div>
         </div>
 
         <div class="qr-checkin-layout">
           <div class="qr-scanner-card">
             <div class="camera-preview-shell">
-              <video id="qr-scanner-video" class="qr-scanner-video hidden" autoplay playsinline muted></video>
+              <video
+                id="qr-scanner-video"
+                class="qr-scanner-video hidden"
+                autoplay
+                playsinline
+                muted
+              ></video>
+
               <div id="qr-scanner-placeholder" class="qr-scanner-placeholder">
-                <strong>Camera check-in chưa bật</strong>
-                <span>Nhấn “Bật camera quét QR” để quét trực tiếp trên thiết bị hỗ trợ camera.</span>
+                <strong>Camera chưa bật</strong>
+                <span>Chọn sự kiện rồi bật camera để bắt đầu quét mã QR.</span>
               </div>
+
               <div class="scan-overlay" aria-hidden="true"></div>
             </div>
 
             <div class="scanner-action-row">
-              <button type="button" id="start-qr-scanner-btn" class="primary-btn compact-btn">Bật camera quét QR</button>
-              <button type="button" id="stop-qr-scanner-btn" class="outline-btn compact-btn" disabled>Tắt camera</button>
+              <button type="button" id="start-qr-scanner-btn" class="primary-btn compact-btn">
+                Bật camera quét QR
+              </button>
+              <button
+                type="button"
+                id="stop-qr-scanner-btn"
+                class="outline-btn compact-btn"
+                disabled
+              >
+                Tắt camera
+              </button>
             </div>
+
             <p id="qr-scanner-status" class="scanner-status" aria-live="polite">
-              Chọn sự kiện trước, sau đó bật camera để bắt đầu quét QR.
+              Sẵn sàng quét QR.
             </p>
           </div>
 
@@ -137,15 +168,15 @@
                   id="qr-checkin-input"
                   name="qr-checkin-input"
                   rows="7"
-                  placeholder="Dán nội dung mã QR nếu thiết bị không hỗ trợ quét camera hoặc muốn kiểm tra thủ công"
+                  placeholder="Dán nội dung QR để xử lý thủ công"
                 ></textarea>
-                <small>
-                  Hỗ trợ nội dung QR được tạo từ hệ thống, ví dụ mã QR trên email xác nhận tham gia sự kiện.
-                </small>
               </div>
+
               <div class="scanner-action-row">
                 <button type="submit" class="primary-btn compact-btn">Xử lý mã QR</button>
-                <button type="button" id="clear-qr-checkin-btn" class="outline-btn compact-btn">Xóa nội dung QR</button>
+                <button type="button" id="clear-qr-checkin-btn" class="outline-btn compact-btn">
+                  Xoá nội dung
+                </button>
               </div>
             </form>
           </div>
@@ -158,8 +189,8 @@
       <section class="checkin-panel">
         <div class="checkin-panel-header">
           <div>
-            <p class="section-tag">Check-in thủ công</p>
-            <h2>Check-in bằng mã đăng ký / email / MSSV</h2>
+            <p class="section-kicker">Check-in thủ công</p>
+            <h2 class="section-title">Tra cứu theo mã đăng ký, email hoặc MSSV</h2>
             <p class="section-text">
               Khi người tham gia không mở được QR Code, ban tổ chức có thể tìm đúng hồ sơ đăng ký
               rồi xác nhận check-in thủ công ngay trên hệ thống.
@@ -169,18 +200,17 @@
 
         <form id="manual-checkin-form" class="manual-checkin-form">
           <div class="form-group manual-checkin-input-group">
-            <label for="manual-checkin-keyword">Từ khóa tìm kiếm</label>
+            <label for="manual-checkin-keyword">Từ khoá</label>
             <div class="input-with-button">
               <input
                 id="manual-checkin-keyword"
                 name="manual-checkin-keyword"
                 type="text"
-                placeholder="Ví dụ: sv001@example.com, SV001"
+                placeholder="Ví dụ: SV001 hoặc sv001@example.com"
                 autocomplete="off"
               />
               <button type="submit" class="primary-btn compact-btn">Tìm người tham gia</button>
             </div>
-            <small>Hệ thống tìm kiếm email hoặc MSSV của người tham gia.</small>
           </div>
         </form>
 
@@ -198,7 +228,7 @@
 
       <div id="empty-state" class="empty-state hidden">
         <h3>Chưa có người đăng ký</h3>
-        <p>Sự kiện này chưa có bản ghi đăng ký nào được lưu trong hệ thống.</p>
+        <p>Sự kiện này hiện chưa có dữ liệu đăng ký.</p>
       </div>
 
       <div id="table-wrapper" class="table-wrapper hidden">
@@ -211,8 +241,11 @@
               <th>MSSV</th>
               <th>Email</th>
               <th>Số điện thoại</th>
-              <th>Trạng thái</th>
+              <th>Trạng thái check-in</th>
               <th>Thời gian check-in</th>
+              <th>Trạng thái email</th>
+              <th>Lần gửi gần nhất</th>
+              <th>Thao tác</th>
               <th>Thời gian đăng ký</th>
             </tr>
           </thead>
@@ -223,6 +256,9 @@
   </main>
 
   <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="./js/app-config.js"></script>
+  <script src="./js/admin-auth.js"></script>
   <script src="./js/DanhSachDangKy.js"></script>
 </body>
 </html>

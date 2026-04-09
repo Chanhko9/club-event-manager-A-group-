@@ -1,5 +1,20 @@
 USE club_event_manager;
 
+
+CREATE TABLE IF NOT EXISTS admins (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(100) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'admin',
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT uq_admins_username UNIQUE (username),
+    CONSTRAINT uq_admins_email UNIQUE (email)
+);
+
 CREATE TABLE IF NOT EXISTS events (
     id INT AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
@@ -19,6 +34,13 @@ CREATE TABLE IF NOT EXISTS registrations (
     faculty VARCHAR(150),
     email VARCHAR(255) NOT NULL,
     phone VARCHAR(20),
+    qr_code VARCHAR(50) NULL,
+    qr_payload LONGTEXT NULL,
+    qr_created_at DATETIME NULL,
+    email_delivery_status VARCHAR(30) NOT NULL DEFAULT 'Chờ gửi',
+    email_sent_at DATETIME NULL,
+    email_error_message TEXT NULL,
+    checked_in_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_registrations_event
         FOREIGN KEY (event_id) REFERENCES events(id)
@@ -27,6 +49,24 @@ CREATE TABLE IF NOT EXISTS registrations (
     CONSTRAINT uq_event_email UNIQUE (event_id, email)
 );
 
+CREATE TABLE IF NOT EXISTS registration_email_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    registration_id INT NOT NULL,
+    event_id INT NOT NULL,
+    recipient_email VARCHAR(255) NOT NULL,
+    send_type VARCHAR(20) NOT NULL DEFAULT 'initial',
+    delivery_status VARCHAR(30) NOT NULL,
+    message_id VARCHAR(255) NULL,
+    error_message TEXT NULL,
+    qr_payload LONGTEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_registration_email_logs_registration
+        FOREIGN KEY (registration_id) REFERENCES registrations(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_registration_email_logs_event
+        FOREIGN KEY (event_id) REFERENCES events(id)
+        ON DELETE CASCADE
+);
 
 CREATE TABLE IF NOT EXISTS feedback_forms (
     id INT AUTO_INCREMENT PRIMARY KEY,
