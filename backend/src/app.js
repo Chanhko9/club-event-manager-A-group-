@@ -118,6 +118,61 @@ function normalizeStudentId(value) {
   return normalizeText(value).toUpperCase();
 }
 
+function normalizeOptionalField(value) {
+  const normalizedValue = normalizeText(value);
+  return normalizedValue || null;
+}
+
+function resolveRegistrationCourseGroup(registration) {
+  const className = normalizeText(registration?.class_name);
+  if (className) {
+    return className;
+  }
+
+  const faculty = normalizeText(registration?.faculty);
+  if (faculty) {
+    return faculty;
+  }
+
+  return "Chưa cập nhật";
+}
+
+function buildEventReportSummary(registrations) {
+  const safeRegistrations = Array.isArray(registrations) ? registrations : [];
+  const courseMap = new Map();
+
+  safeRegistrations.forEach((registration) => {
+    const courseName = resolveRegistrationCourseGroup(registration);
+    const currentValue = courseMap.get(courseName) || {
+      course_name: courseName,
+      registration_count: 0,
+      checkin_count: 0
+    };
+
+    currentValue.registration_count += 1;
+    if (registration?.checked_in_at) {
+      currentValue.checkin_count += 1;
+    }
+
+    courseMap.set(courseName, currentValue);
+  });
+
+  const courseStatistics = Array.from(courseMap.values()).sort((left, right) => {
+    if (right.registration_count !== left.registration_count) {
+      return right.registration_count - left.registration_count;
+    }
+
+    return left.course_name.localeCompare(right.course_name, "vi");
+  });
+
+  return {
+    total_registrations: safeRegistrations.length,
+    total_checkins: safeRegistrations.filter((registration) => Boolean(registration?.checked_in_at))
+      .length,
+    course_statistics: courseStatistics
+  };
+}
+
 function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
 }
@@ -269,6 +324,8 @@ async function findRegistrationByIdForEvent(eventId, registrationId) {
         event_id,
         full_name,
         student_id,
+        class_name,
+        faculty,
         email,
         phone,
         qr_code,
@@ -335,6 +392,8 @@ async function findRegistrationForManualCheckin(eventId, keyword) {
         event_id,
         full_name,
         student_id,
+        class_name,
+        faculty,
         email,
         phone,
         checked_in_at,
@@ -403,6 +462,8 @@ function validateRegistrationPayload(payload) {
   const studentId = normalizeStudentId(payload.student_id);
   const email = normalizeEmail(payload.email);
   const phone = normalizeText(payload.phone);
+  const className = normalizeOptionalField(payload.class_name);
+  const faculty = normalizeOptionalField(payload.faculty);
 
   if (!eventId) {
     return {
@@ -432,7 +493,9 @@ function validateRegistrationPayload(payload) {
       full_name: fullName,
       student_id: studentId,
       email,
-      phone
+      phone,
+      class_name: className,
+      faculty
     }
   };
 }
@@ -570,6 +633,16 @@ async function ensureRegistrationEmailInfrastructure() {
     "registrations",
     "email_error_message",
     "TEXT NULL AFTER email_sent_at"
+  );
+  await ensureTableColumn(
+    "registrations",
+    "class_name",
+    "VARCHAR(100) NULL AFTER student_id"
+  );
+  await ensureTableColumn(
+    "registrations",
+    "faculty",
+    "VARCHAR(150) NULL AFTER class_name"
   );
   await ensureTableColumn(
     "registrations",
@@ -774,6 +847,8 @@ async function findFeedbackParticipant(eventId, studentId, email) {
         event_id,
         full_name,
         student_id,
+        class_name,
+        faculty,
         email,
         phone,
         checked_in_at,
@@ -890,6 +965,8 @@ async function getRegistrationsByEventId(eventId, options = {}) {
         event_id,
         full_name,
         student_id,
+        class_name,
+        faculty,
         email,
         phone,
         email_delivery_status,
@@ -919,6 +996,8 @@ async function findRegistrationById(registrationId) {
         event_id,
         full_name,
         student_id,
+        class_name,
+        faculty,
         email,
         phone,
         qr_code,
@@ -1582,6 +1661,38 @@ app.get("/api/events/:id", async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       message: "Failed to fetch event",
+      error: error.message
+    });
+  }
+});
+
+app.get("/api/events/:id/report-summary", requireAdminApiAuth, async (req, res) => {
+  try {
+    const eventId = parsePositiveInteger(req.params.id);
+
+    if (!eventId) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    const registrations = await getRegistrationsByEventId(eventId, { checkin: "all" });
+    const summary = buildEventReportSummary(registrations);
+
+    return res.json({
+      event,
+      summary
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể lấy báo cáo thống kê của sự kiện",
       error: error.message
     });
   }
@@ -2411,13 +2522,15 @@ app.post("/api/registrations", async (req, res) => {
 
     const [result] = await pool.query(
       `
-        INSERT INTO registrations (event_id, full_name, student_id, email, phone)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO registrations (event_id, full_name, student_id, class_name, faculty, email, phone)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `,
       [
         registrationData.event_id,
         registrationData.full_name,
         registrationData.student_id,
+        registrationData.class_name,
+        registrationData.faculty,
         registrationData.email,
         registrationData.phone
       ]

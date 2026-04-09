@@ -75,6 +75,8 @@ function resetData() {
       event_id: 1,
       full_name: "Nguyen Van A",
       student_id: "SV001",
+      class_name: "K50",
+      faculty: "Cong nghe thong tin",
       email: "sv001@example.com",
       phone: "0900000001",
       qr_code: "DK-0001",
@@ -96,6 +98,8 @@ function resetData() {
       event_id: 1,
       full_name: "Tran Thi B",
       student_id: "SV002",
+      class_name: "K49",
+      faculty: "Cong nghe thong tin",
       email: "sv002@example.com",
       phone: "0900000002",
       qr_code: "DK-0002",
@@ -125,6 +129,8 @@ function resetData() {
       event_id: 2,
       full_name: "Le Van C",
       student_id: "SV003",
+      class_name: "K48",
+      faculty: "Quan tri kinh doanh",
       email: "sv003@example.com",
       phone: "0900000003",
       qr_code: "DK-0003",
@@ -201,6 +207,8 @@ function resetData() {
     "event_id",
     "full_name",
     "student_id",
+    "class_name",
+    "faculty",
     "email",
     "phone",
     "qr_code",
@@ -629,15 +637,17 @@ const mockPool = {
 
     if (
       normalizedSql.includes(
-        "INSERT INTO registrations (event_id, full_name, student_id, email, phone)"
+        "INSERT INTO registrations (event_id, full_name, student_id, class_name, faculty, email, phone)"
       )
     ) {
-      const [eventId, fullName, studentId, email, phone] = params;
+      const [eventId, fullName, studentId, className, faculty, email, phone] = params;
       const newRegistration = {
         id: registrations.length + 1,
         event_id: Number(eventId),
         full_name: fullName,
         student_id: studentId,
+        class_name: className,
+        faculty,
         email,
         phone,
         qr_code: null,
@@ -937,6 +947,23 @@ test("GET /api/events/:id/registrations trả về đúng danh sách theo sự k
     assert.equal(data.registrations[0].email_delivery_status, "Đã gửi");
     assert.equal(data.registrations[0].check_in_status, "Đã check-in");
     assert.equal(data.registrations[1].check_in_status, "Chưa check-in");
+  });
+});
+
+test("GET /api/events/:id/report-summary trả về báo cáo đúng theo sự kiện đã chọn", async () => {
+  await withServer(async (baseUrl) => {
+    const adminFetch = await createAdminRequest(baseUrl);
+    const response = await adminFetch(`/api/events/1/report-summary`);
+    const data = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(data.event.id, 1);
+    assert.equal(data.summary.total_registrations, 2);
+    assert.equal(data.summary.total_checkins, 1);
+    assert.deepEqual(data.summary.course_statistics, [
+      { course_name: "K49", registration_count: 1, checkin_count: 1 },
+      { course_name: "K50", registration_count: 1, checkin_count: 0 }
+    ]);
   });
 });
 

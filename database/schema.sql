@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS registrations (
     event_id INT NOT NULL,
     full_name VARCHAR(255) NOT NULL,
     student_id VARCHAR(50) NOT NULL,
+    class_name VARCHAR(100),
+    faculty VARCHAR(150),
     email VARCHAR(255) NOT NULL,
     phone VARCHAR(20),
     qr_code VARCHAR(50) NULL,
