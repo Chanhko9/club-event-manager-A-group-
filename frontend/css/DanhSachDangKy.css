@@ -16,6 +16,58 @@
   grid-column: span 1;
 }
 
+.cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cell-muted {
+  display: inline-block;
+  color: #7c2d12;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.email-status-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+}
+
+.email-status-chip.pending {
+  color: #a16207;
+  background: #fef3c7;
+  border-color: #fcd34d;
+}
+
+.email-status-chip.sent {
+  color: #166534;
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.email-status-chip.failed {
+  color: #b91c1c;
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+.table-action-btn {
+  white-space: nowrap;
+}
+
+.table-action-btn[disabled] {
+  opacity: 0.7;
+  cursor: wait;
+}
+
 .qr-checkin-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr);

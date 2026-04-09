@@ -17,6 +17,7 @@
           <span>Quản lý người tham gia</span>
         </span>
       </a>
+
       <nav class="site-nav">
         <a class="nav-link" href="./index.html">Trang chủ</a>
         <a class="nav-link" href="./TaoSuKien.html">Quản lý sự kiện</a>
@@ -56,8 +57,11 @@
         <div>
           <p class="section-kicker">Điều phối đăng ký</p>
           <h2 class="section-title">Danh sách người tham gia</h2>
-          <p class="section-text">Lọc theo sự kiện, tìm kiếm theo từ khoá và thao tác check-in ngay tại đây.</p>
+          <p class="section-text">
+            Lọc theo sự kiện, tìm kiếm theo từ khoá và thao tác check-in ngay tại đây.
+          </p>
         </div>
+
         <div class="top-actions">
           <span id="admin-session-badge" class="admin-session-badge">Admin</span>
           <a class="secondary-btn" href="./TaoSuKien.html">Quay lại quản lý sự kiện</a>
@@ -76,7 +80,12 @@
 
         <div class="form-group">
           <label for="search-input">Tìm kiếm</label>
-          <input type="text" id="search-input" placeholder="Họ tên, MSSV, email hoặc số điện thoại" autocomplete="off" />
+          <input
+            type="text"
+            id="search-input"
+            placeholder="Họ tên, MSSV, email hoặc số điện thoại"
+            autocomplete="off"
+          />
         </div>
 
         <div class="form-group filter-status-group">
@@ -89,7 +98,9 @@
         </div>
       </div>
 
-      <div id="selected-event-info" class="event-preview-card empty-card">Chọn một sự kiện để xem chi tiết.</div>
+      <div id="selected-event-info" class="event-preview-card empty-card">
+        Chọn một sự kiện để xem chi tiết.
+      </div>
 
       <section class="checkin-panel">
         <div class="checkin-panel-header">
@@ -102,30 +113,58 @@
         <div class="qr-checkin-layout">
           <div class="qr-scanner-card">
             <div class="camera-preview-shell">
-              <video id="qr-scanner-video" class="qr-scanner-video hidden" autoplay playsinline muted></video>
+              <video
+                id="qr-scanner-video"
+                class="qr-scanner-video hidden"
+                autoplay
+                playsinline
+                muted
+              ></video>
+
               <div id="qr-scanner-placeholder" class="qr-scanner-placeholder">
                 <strong>Camera chưa bật</strong>
                 <span>Chọn sự kiện rồi bật camera để bắt đầu quét mã QR.</span>
               </div>
+
               <div class="scan-overlay" aria-hidden="true"></div>
             </div>
 
             <div class="scanner-action-row">
-              <button type="button" id="start-qr-scanner-btn" class="primary-btn compact-btn">Bật camera quét QR</button>
-              <button type="button" id="stop-qr-scanner-btn" class="outline-btn compact-btn" disabled>Tắt camera</button>
+              <button type="button" id="start-qr-scanner-btn" class="primary-btn compact-btn">
+                Bật camera quét QR
+              </button>
+              <button
+                type="button"
+                id="stop-qr-scanner-btn"
+                class="outline-btn compact-btn"
+                disabled
+              >
+                Tắt camera
+              </button>
             </div>
-            <p id="qr-scanner-status" class="scanner-status" aria-live="polite">Sẵn sàng quét QR.</p>
+
+            <p id="qr-scanner-status" class="scanner-status" aria-live="polite">
+              Sẵn sàng quét QR.
+            </p>
           </div>
 
           <div class="qr-input-card">
             <form id="qr-checkin-form" class="manual-checkin-form">
               <div class="form-group">
                 <label for="qr-checkin-input">Nội dung QR</label>
-                <textarea id="qr-checkin-input" name="qr-checkin-input" rows="7" placeholder="Dán nội dung QR để xử lý thủ công"></textarea>
+                <textarea
+                  id="qr-checkin-input"
+                  name="qr-checkin-input"
+                  rows="7"
+                  placeholder="Dán nội dung QR để xử lý thủ công"
+                ></textarea>
               </div>
+
               <div class="scanner-action-row">
                 <button type="submit" class="primary-btn compact-btn">Xử lý mã QR</button>
-                <button type="button" id="clear-qr-checkin-btn" class="outline-btn compact-btn">Xoá nội dung</button>
+                <button type="button" id="clear-qr-checkin-btn" class="outline-btn compact-btn">
+                  Xoá nội dung
+                </button>
               </div>
             </form>
           </div>
@@ -140,6 +179,10 @@
           <div>
             <p class="section-kicker">Check-in thủ công</p>
             <h2 class="section-title">Tra cứu theo mã đăng ký, email hoặc MSSV</h2>
+            <p class="section-text">
+              Khi người tham gia không mở được QR Code, ban tổ chức có thể tìm đúng hồ sơ đăng ký
+              rồi xác nhận check-in thủ công ngay trên hệ thống.
+            </p>
           </div>
         </div>
 
@@ -147,7 +190,13 @@
           <div class="form-group manual-checkin-input-group">
             <label for="manual-checkin-keyword">Từ khoá</label>
             <div class="input-with-button">
-              <input id="manual-checkin-keyword" name="manual-checkin-keyword" type="text" placeholder="Ví dụ: SV001 hoặc sv001@example.com" autocomplete="off" />
+              <input
+                id="manual-checkin-keyword"
+                name="manual-checkin-keyword"
+                type="text"
+                placeholder="Ví dụ: SV001 hoặc sv001@example.com"
+                autocomplete="off"
+              />
               <button type="submit" class="primary-btn compact-btn">Tìm người tham gia</button>
             </div>
           </div>
@@ -180,8 +229,11 @@
               <th>MSSV</th>
               <th>Email</th>
               <th>Số điện thoại</th>
-              <th>Trạng thái</th>
+              <th>Trạng thái check-in</th>
               <th>Thời gian check-in</th>
+              <th>Trạng thái email</th>
+              <th>Lần gửi gần nhất</th>
+              <th>Thao tác</th>
               <th>Thời gian đăng ký</th>
             </tr>
           </thead>
@@ -192,6 +244,7 @@
   </main>
 
   <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
   <script src="./js/app-config.js"></script>
   <script src="./js/admin-auth.js"></script>
   <script src="./js/DanhSachDangKy.js"></script>

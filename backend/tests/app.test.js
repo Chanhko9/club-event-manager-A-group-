@@ -11,7 +11,10 @@ let feedbackResponses;
 let admins;
 let sentEmails;
 let forcedSendError;
+let forceEmailStatusUpdateError;
+let forceEmailLogInsertError;
 let registrationColumns;
+let registrationEmailLogColumns;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -32,12 +35,38 @@ function buildMockQrPayload(event, registration) {
 }
 
 function resetData() {
-  const adminPasswordHash = hashPassword("admin123456", { saltHex: "00112233445566778899aabbccddeeff" });
+  const adminPasswordHash = hashPassword("admin123456", {
+    saltHex: "00112233445566778899aabbccddeeff"
+  });
 
   events = [
-    { id: 1, title: "Workshop Git co ban", event_time: "2026-03-25 18:00:00", location: "Phong A101", description: "Huong dan Git va GitHub cho thanh vien moi", created_at: "2026-03-23 12:37:58", updated_at: "2026-03-23 12:37:58" },
-    { id: 2, title: "Workshop HTML CSS JS", event_time: "2026-03-28 14:00:00", location: "Phong B203", description: "On tap nen tang frontend", created_at: "2026-03-23 12:37:58", updated_at: "2026-03-23 12:37:58" },
-    { id: 3, title: "Workshop Node.js co ban", event_time: "2026-03-30 19:00:00", location: "Phong C105", description: "Lam quen backend bang Node.js", created_at: "2026-03-23 12:37:58", updated_at: "2026-03-23 12:37:58" }
+    {
+      id: 1,
+      title: "Workshop Git co ban",
+      event_time: "2026-03-25 18:00:00",
+      location: "Phong A101",
+      description: "Huong dan Git va GitHub cho thanh vien moi",
+      created_at: "2026-03-23 12:37:58",
+      updated_at: "2026-03-23 12:37:58"
+    },
+    {
+      id: 2,
+      title: "Workshop HTML CSS JS",
+      event_time: "2026-03-28 14:00:00",
+      location: "Phong B203",
+      description: "On tap nen tang frontend",
+      created_at: "2026-03-23 12:37:58",
+      updated_at: "2026-03-23 12:37:58"
+    },
+    {
+      id: 3,
+      title: "Workshop Node.js co ban",
+      event_time: "2026-03-30 19:00:00",
+      location: "Phong C105",
+      description: "Lam quen backend bang Node.js",
+      created_at: "2026-03-23 12:37:58",
+      updated_at: "2026-03-23 12:37:58"
+    }
   ];
 
   registrations = [
@@ -49,7 +78,12 @@ function resetData() {
       email: "sv001@example.com",
       phone: "0900000001",
       qr_code: "DK-0001",
-      qr_payload: JSON.stringify({ registrationId: 1, eventId: 1, studentId: "SV001", email: "sv001@example.com" }),
+      qr_payload: JSON.stringify({
+        registrationId: 1,
+        eventId: 1,
+        studentId: "SV001",
+        email: "sv001@example.com"
+      }),
       qr_created_at: "2026-03-23 12:38:00",
       email_delivery_status: "Đã gửi",
       email_sent_at: "2026-03-23 12:39:00",
@@ -65,13 +99,20 @@ function resetData() {
       email: "sv002@example.com",
       phone: "0900000002",
       qr_code: "DK-0002",
-      qr_payload: buildMockQrPayload(events?.[0] || { title: "Workshop Git co ban", event_time: "2026-03-25 18:00:00", location: "Phong A101" }, {
-        id: 2,
-        full_name: "Tran Thi B",
-        student_id: "SV002",
-        email: "sv002@example.com",
-        phone: "0900000002"
-      }),
+      qr_payload: buildMockQrPayload(
+        events?.[0] || {
+          title: "Workshop Git co ban",
+          event_time: "2026-03-25 18:00:00",
+          location: "Phong A101"
+        },
+        {
+          id: 2,
+          full_name: "Tran Thi B",
+          student_id: "SV002",
+          email: "sv002@example.com",
+          phone: "0900000002"
+        }
+      ),
       qr_created_at: "2026-03-23 12:40:00",
       email_delivery_status: "Đã gửi",
       email_sent_at: "2026-03-23 12:41:00",
@@ -87,13 +128,20 @@ function resetData() {
       email: "sv003@example.com",
       phone: "0900000003",
       qr_code: "DK-0003",
-      qr_payload: buildMockQrPayload(events?.[1] || { title: "Workshop HTML CSS JS", event_time: "2026-03-28 14:00:00", location: "Phong B203" }, {
-        id: 3,
-        full_name: "Le Van C",
-        student_id: "SV003",
-        email: "sv003@example.com",
-        phone: "0900000003"
-      }),
+      qr_payload: buildMockQrPayload(
+        events?.[1] || {
+          title: "Workshop HTML CSS JS",
+          event_time: "2026-03-28 14:00:00",
+          location: "Phong B203"
+        },
+        {
+          id: 3,
+          full_name: "Le Van C",
+          student_id: "SV003",
+          email: "sv003@example.com",
+          phone: "0900000003"
+        }
+      ),
       qr_created_at: "2026-03-23 12:45:00",
       email_delivery_status: "Chờ gửi",
       email_sent_at: null,
@@ -145,6 +193,9 @@ function resetData() {
   registrationEmailLogs = [];
   sentEmails = [];
   forcedSendError = null;
+  forceEmailStatusUpdateError = null;
+  forceEmailLogInsertError = null;
+
   registrationColumns = new Set([
     "id",
     "event_id",
@@ -159,6 +210,19 @@ function resetData() {
     "email_sent_at",
     "email_error_message",
     "checked_in_at",
+    "created_at"
+  ]);
+
+  registrationEmailLogColumns = new Set([
+    "id",
+    "registration_id",
+    "event_id",
+    "recipient_email",
+    "send_type",
+    "delivery_status",
+    "message_id",
+    "error_message",
+    "qr_payload",
     "created_at"
   ]);
 }
@@ -176,7 +240,11 @@ function findRegistration(registrationId) {
 }
 
 function findRegistrationForEvent(eventId, registrationId) {
-  return registrations.find((item) => item.event_id === Number(eventId) && item.id === Number(registrationId)) || null;
+  return (
+    registrations.find(
+      (item) => item.event_id === Number(eventId) && item.id === Number(registrationId)
+    ) || null
+  );
 }
 
 function findFeedbackForm(eventId) {
@@ -184,21 +252,34 @@ function findFeedbackForm(eventId) {
 }
 
 function findFeedbackResponse(eventId, registrationId) {
-  return feedbackResponses.find((item) => item.event_id === Number(eventId) && item.registration_id === Number(registrationId)) || null;
+  return (
+    feedbackResponses.find(
+      (item) =>
+        item.event_id === Number(eventId) &&
+        item.registration_id === Number(registrationId)
+    ) || null
+  );
 }
 
 function findAdminByIdentifier(identifier) {
   const normalizedIdentifier = String(identifier || "").trim().toLowerCase();
-  return admins.find((item) =>
-    Number(item.is_active) === 1
-    && (
-      String(item.username || "").trim().toLowerCase() === normalizedIdentifier
-      || String(item.email || "").trim().toLowerCase() === normalizedIdentifier
-    )) || null;
+  return (
+    admins.find(
+      (item) =>
+        Number(item.is_active) === 1 &&
+        (
+          String(item.username || "").trim().toLowerCase() === normalizedIdentifier ||
+          String(item.email || "").trim().toLowerCase() === normalizedIdentifier
+        )
+    ) || null
+  );
 }
 
 function findAdminById(adminId) {
-  return admins.find((item) => item.id === Number(adminId) && Number(item.is_active) === 1) || null;
+  return (
+    admins.find((item) => item.id === Number(adminId) && Number(item.is_active) === 1) ||
+    null
+  );
 }
 
 function normalizeSql(sql) {
@@ -208,6 +289,8 @@ function normalizeSql(sql) {
 function toRegistrationRow(registration) {
   return clone({
     ...registration,
+    registration_code: registration.registration_code || buildRegistrationCode(registration.id),
+    is_checked_in: Boolean(registration.checked_in_at),
     check_in_status: registration.checked_in_at ? "Đã check-in" : "Chưa check-in"
   });
 }
@@ -227,6 +310,11 @@ const mockPool = {
       return [registrationColumns.has(columnName) ? [{ Field: columnName }] : []];
     }
 
+    if (normalizedSql.startsWith("SHOW COLUMNS FROM registration_email_logs LIKE ?")) {
+      const columnName = String(params[0]);
+      return [registrationEmailLogColumns.has(columnName) ? [{ Field: columnName }] : []];
+    }
+
     if (normalizedSql.startsWith("ALTER TABLE registrations ADD COLUMN")) {
       const match = normalizedSql.match(/ADD COLUMN ([a-z_]+)/i);
       if (match) {
@@ -235,10 +323,20 @@ const mockPool = {
       return [{ affectedRows: 0 }];
     }
 
-    if (normalizedSql.startsWith("CREATE TABLE IF NOT EXISTS feedback_forms") ||
-        normalizedSql.startsWith("CREATE TABLE IF NOT EXISTS feedback_responses") ||
-        normalizedSql.startsWith("CREATE TABLE IF NOT EXISTS registration_email_logs") ||
-        normalizedSql.startsWith("CREATE TABLE IF NOT EXISTS admins")) {
+    if (normalizedSql.startsWith("ALTER TABLE registration_email_logs ADD COLUMN")) {
+      const match = normalizedSql.match(/ADD COLUMN ([a-z_]+)/i);
+      if (match) {
+        registrationEmailLogColumns.add(match[1]);
+      }
+      return [{ affectedRows: 0 }];
+    }
+
+    if (
+      normalizedSql.startsWith("CREATE TABLE IF NOT EXISTS feedback_forms") ||
+      normalizedSql.startsWith("CREATE TABLE IF NOT EXISTS feedback_responses") ||
+      normalizedSql.startsWith("CREATE TABLE IF NOT EXISTS registration_email_logs") ||
+      normalizedSql.startsWith("CREATE TABLE IF NOT EXISTS admins")
+    ) {
       return [{ warningStatus: 0 }];
     }
 
@@ -246,7 +344,11 @@ const mockPool = {
       return [[{ total: admins.length }]];
     }
 
-    if (normalizedSql.startsWith("INSERT INTO admins (username, email, full_name, password_hash, role, is_active)")) {
+    if (
+      normalizedSql.startsWith(
+        "INSERT INTO admins (username, email, full_name, password_hash, role, is_active)"
+      )
+    ) {
       const [username, email, fullName, passwordHash, role] = params;
       const newAdmin = {
         id: admins.length + 1,
@@ -263,22 +365,36 @@ const mockPool = {
       return [{ insertId: newAdmin.id }];
     }
 
-    if (normalizedSql.includes("FROM admins") && normalizedSql.includes("LOWER(username) = LOWER(?)") && normalizedSql.includes("LOWER(email) = LOWER(?)")) {
+    if (
+      normalizedSql.includes("FROM admins") &&
+      normalizedSql.includes("LOWER(username) = LOWER(?)") &&
+      normalizedSql.includes("LOWER(email) = LOWER(?)")
+    ) {
       const admin = findAdminByIdentifier(params[0]) || findAdminByIdentifier(params[1]);
       return [[admin ? clone(admin) : undefined].filter(Boolean)];
     }
 
-    if (normalizedSql.includes("FROM admins") && normalizedSql.includes("WHERE id = ? AND is_active = 1") && normalizedSql.includes("LIMIT 1")) {
+    if (
+      normalizedSql.includes("FROM admins") &&
+      normalizedSql.includes("WHERE id = ? AND is_active = 1") &&
+      normalizedSql.includes("LIMIT 1")
+    ) {
       const admin = findAdminById(params[0]);
       return [[admin ? clone(admin) : undefined].filter(Boolean)];
     }
 
-    if (normalizedSql.includes("FROM feedback_forms ff") && normalizedSql.includes("WHERE ff.event_id = ?") && normalizedSql.includes("response_count")) {
+    if (
+      normalizedSql.includes("FROM feedback_forms ff") &&
+      normalizedSql.includes("WHERE ff.event_id = ?") &&
+      normalizedSql.includes("response_count")
+    ) {
       const eventId = Number(params[0]);
       const form = findFeedbackForm(eventId);
+
       if (!form) {
         return [[]];
       }
+
       return [[{
         ...clone(form),
         response_count: feedbackResponses.filter((item) => item.event_id === eventId).length
@@ -288,7 +404,9 @@ const mockPool = {
     if (normalizedSql.startsWith("UPDATE feedback_forms SET satisfaction_question = ?")) {
       const [satisfactionQuestion, commentQuestion, successMessage, isEnabled, eventId] = params;
       const form = findFeedbackForm(eventId);
+
       if (!form) return [{ affectedRows: 0 }];
+
       form.satisfaction_question = satisfactionQuestion;
       form.comment_question = commentQuestion;
       form.success_message = successMessage;
@@ -313,7 +431,10 @@ const mockPool = {
       return [{ insertId: newForm.id }];
     }
 
-    if (normalizedSql.includes("FROM feedback_responses fr") && normalizedSql.includes("INNER JOIN registrations r ON r.id = fr.registration_id")) {
+    if (
+      normalizedSql.includes("FROM feedback_responses fr") &&
+      normalizedSql.includes("INNER JOIN registrations r ON r.id = fr.registration_id")
+    ) {
       const eventId = Number(params[0]);
       const rows = feedbackResponses
         .filter((item) => item.event_id === eventId)
@@ -327,10 +448,15 @@ const mockPool = {
             email: registration?.email || ""
           };
         });
+
       return [rows];
     }
 
-    if (normalizedSql.includes("FROM feedback_responses fr") && normalizedSql.includes("WHERE fr.event_id = ? AND fr.registration_id = ?") && normalizedSql.includes("LIMIT 1")) {
+    if (
+      normalizedSql.includes("FROM feedback_responses fr") &&
+      normalizedSql.includes("WHERE fr.event_id = ? AND fr.registration_id = ?") &&
+      normalizedSql.includes("LIMIT 1")
+    ) {
       const response = findFeedbackResponse(params[0], params[1]);
       return [[response ? clone(response) : undefined].filter(Boolean)];
     }
@@ -338,18 +464,20 @@ const mockPool = {
     if (normalizedSql.startsWith("INSERT INTO feedback_responses (")) {
       const [feedbackFormId, eventId, registrationId, satisfactionRating, comment] = params;
       const existing = findFeedbackResponse(eventId, registrationId);
+
       if (existing) {
         const error = new Error("Duplicate feedback response");
         error.code = "ER_DUP_ENTRY";
         throw error;
       }
+
       const newResponse = {
         id: feedbackResponses.length + 1,
         feedback_form_id: Number(feedbackFormId),
         event_id: Number(eventId),
         registration_id: Number(registrationId),
         satisfaction_rating: Number(satisfactionRating),
-        comment: comment,
+        comment,
         created_at: `2026-03-29 10:05:${String(feedbackResponses.length + 1).padStart(2, "0")}`
       };
       feedbackResponses.push(newResponse);
@@ -357,9 +485,14 @@ const mockPool = {
     }
 
     if (normalizedSql.includes("FROM events e") && normalizedSql.includes("registration_count")) {
-      return [clone(events)
-        .sort((a, b) => new Date(a.event_time) - new Date(b.event_time))
-        .map((event) => ({ ...event, registration_count: registrations.filter((item) => item.event_id === event.id).length }))];
+      return [
+        clone(events)
+          .sort((a, b) => new Date(a.event_time) - new Date(b.event_time))
+          .map((event) => ({
+            ...event,
+            registration_count: registrations.filter((item) => item.event_id === event.id).length
+          }))
+      ];
     }
 
     if (normalizedSql.includes("FROM events") && normalizedSql.includes("WHERE id = ?")) {
@@ -367,85 +500,122 @@ const mockPool = {
       return [[event ? clone(event) : undefined].filter(Boolean)];
     }
 
-    if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("WHERE event_id = ?") && normalizedSql.includes("(LOWER(student_id) = LOWER(?) OR LOWER(email) = LOWER(?))")) {
+    if (
+      normalizedSql.includes("FROM registrations") &&
+      normalizedSql.includes("WHERE event_id = ?") &&
+      normalizedSql.includes("(LOWER(student_id) = LOWER(?) OR LOWER(email) = LOWER(?))")
+    ) {
       const [eventId, studentId, email] = params;
-      const duplicated = registrations.find((item) =>
-        item.event_id === Number(eventId)
-        && (item.student_id.toLowerCase() === String(studentId).toLowerCase() || item.email.toLowerCase() === String(email).toLowerCase())
+      const duplicated = registrations.find(
+        (item) =>
+          item.event_id === Number(eventId) &&
+          (
+            item.student_id.toLowerCase() === String(studentId).toLowerCase() ||
+            item.email.toLowerCase() === String(email).toLowerCase()
+          )
       );
-      return [[duplicated ? clone({ id: duplicated.id, student_id: duplicated.student_id, email: duplicated.email }) : undefined].filter(Boolean)];
+      return [[
+        duplicated
+          ? clone({
+              id: duplicated.id,
+              student_id: duplicated.student_id,
+              email: duplicated.email
+            })
+          : undefined
+      ].filter(Boolean)];
     }
 
-    if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("WHERE event_id = ? AND id = ?") && normalizedSql.includes("LIMIT 1")) {
+    if (
+      normalizedSql.includes("FROM registrations") &&
+      normalizedSql.includes("WHERE event_id = ? AND id = ?") &&
+      normalizedSql.includes("LIMIT 1")
+    ) {
       const registration = findRegistrationForEvent(params[0], params[1]);
       return [[registration ? toRegistrationRow(registration) : undefined].filter(Boolean)];
     }
 
-    if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("WHERE id = ?") && normalizedSql.includes("LIMIT 1")) {
+    if (
+      normalizedSql.includes("FROM registrations") &&
+      normalizedSql.includes("WHERE id = ?") &&
+      normalizedSql.includes("LIMIT 1")
+    ) {
       const registration = findRegistration(params[0]);
       return [[registration ? clone(registration) : undefined].filter(Boolean)];
     }
 
-    if (normalizedSql.includes("FROM registrations")
-      && normalizedSql.includes("AND UPPER(student_id) = UPPER(?)")
-      && normalizedSql.includes("AND LOWER(email) = LOWER(?)")
-      && normalizedSql.includes("ORDER BY id DESC")
-      && params.length === 3) {
-      const [eventId, studentId, email] = params;
-      const registration = registrations
-        .filter((item) => item.event_id === Number(eventId)
-          && item.email.toLowerCase() === String(email).toLowerCase()
-          && item.student_id.toUpperCase() === String(studentId).toUpperCase())
-        .sort((a, b) => b.id - a.id)[0];
-      return [[registration ? toRegistrationRow(registration) : undefined].filter(Boolean)];
-    }
-    if (normalizedSql.includes("FROM registrations")
-      && normalizedSql.includes("WHERE event_id = ?")
-      && normalizedSql.includes("( LOWER(email) = LOWER(?) OR UPPER(student_id) = UPPER(?) )")
-      && normalizedSql.includes("ORDER BY id DESC")
-      && params.length === 3) {
+    if (
+      normalizedSql.includes("FROM registrations") &&
+      normalizedSql.includes("LOWER(email) = LOWER(?)") &&
+      normalizedSql.includes("UPPER(student_id) = UPPER(?)") &&
+      normalizedSql.includes("ORDER BY id DESC") &&
+      params.length === 3
+    ) {
       const [eventId, email, studentId] = params;
       const registration = registrations
-        .filter((item) => item.event_id === Number(eventId)
-          && (item.email.toLowerCase() === String(email).toLowerCase()
-            || item.student_id.toUpperCase() === String(studentId).toUpperCase()))
+        .filter(
+          (item) =>
+            item.event_id === Number(eventId) &&
+            (
+              item.email.toLowerCase() === String(email).toLowerCase() ||
+              item.student_id.toUpperCase() === String(studentId).toUpperCase()
+            )
+        )
         .sort((a, b) => b.id - a.id)[0];
+
       return [[registration ? toRegistrationRow(registration) : undefined].filter(Boolean)];
     }
 
-
-    if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("ORDER BY id DESC") && params.length === 4) {
+    if (
+      normalizedSql.includes("FROM registrations") &&
+      normalizedSql.includes("ORDER BY id DESC") &&
+      params.length === 4
+    ) {
       const [eventId, registrationId, email, studentId] = params;
       const registration = registrations
-        .filter((item) => item.event_id === Number(eventId)
-          && (item.id === Number(registrationId)
-            || item.email.toLowerCase() === String(email).toLowerCase()
-            || item.student_id.toUpperCase() === String(studentId).toUpperCase()))
+        .filter(
+          (item) =>
+            item.event_id === Number(eventId) &&
+            (
+              item.id === Number(registrationId) ||
+              item.email.toLowerCase() === String(email).toLowerCase() ||
+              item.student_id.toUpperCase() === String(studentId).toUpperCase()
+            )
+        )
         .sort((a, b) => b.id - a.id)[0];
+
       return [[registration ? toRegistrationRow(registration) : undefined].filter(Boolean)];
     }
 
-    if (normalizedSql.includes("FROM registrations") && normalizedSql.includes("ORDER BY created_at DESC, id DESC")) {
+    if (
+      normalizedSql.includes("FROM registrations") &&
+      normalizedSql.includes("ORDER BY created_at DESC, id DESC")
+    ) {
       const eventId = Number(params[0]);
       let result = registrations.filter((item) => item.event_id === eventId);
 
-      const whereCheckedIn = normalizedSql.includes("WHERE event_id = ? AND checked_in_at IS NOT NULL");
-      const whereNotCheckedIn = normalizedSql.includes("WHERE event_id = ? AND checked_in_at IS NULL");
+      const whereCheckedIn = normalizedSql.includes(
+        "WHERE event_id = ? AND checked_in_at IS NOT NULL"
+      );
+      const whereNotCheckedIn = normalizedSql.includes(
+        "WHERE event_id = ? AND checked_in_at IS NULL"
+      );
 
       if (whereCheckedIn) {
         result = result.filter((item) => item.checked_in_at != null);
       }
+
       if (whereNotCheckedIn) {
         result = result.filter((item) => item.checked_in_at == null);
       }
 
       if (params.length > 1) {
         const keyword = String(params[1]).replace(/%/g, "").toLowerCase();
-        result = result.filter((item) =>
-          item.full_name.toLowerCase().includes(keyword)
-          || item.student_id.toLowerCase().includes(keyword)
-          || item.email.toLowerCase().includes(keyword)
-          || String(item.phone || "").toLowerCase().includes(keyword)
+        result = result.filter(
+          (item) =>
+            item.full_name.toLowerCase().includes(keyword) ||
+            item.student_id.toLowerCase().includes(keyword) ||
+            item.email.toLowerCase().includes(keyword) ||
+            String(item.phone || "").toLowerCase().includes(keyword)
         );
       }
 
@@ -457,7 +627,11 @@ const mockPool = {
       return [result.map(toRegistrationRow)];
     }
 
-    if (normalizedSql.includes("INSERT INTO registrations (event_id, full_name, student_id, email, phone)")) {
+    if (
+      normalizedSql.includes(
+        "INSERT INTO registrations (event_id, full_name, student_id, email, phone)"
+      )
+    ) {
       const [eventId, fullName, studentId, email, phone] = params;
       const newRegistration = {
         id: registrations.length + 1,
@@ -479,20 +653,34 @@ const mockPool = {
       return [{ insertId: newRegistration.id }];
     }
 
-    if (normalizedSql.includes("UPDATE registrations") && normalizedSql.includes("SET qr_code = ?") && normalizedSql.includes("qr_payload = ?") && normalizedSql.includes("qr_created_at = NOW()")) {
+    if (
+      normalizedSql.includes("UPDATE registrations") &&
+      normalizedSql.includes("SET qr_code = ?") &&
+      normalizedSql.includes("qr_payload = ?") &&
+      normalizedSql.includes("qr_created_at = NOW()")
+    ) {
       const [qrCode, qrPayload, registrationId] = params;
       const registration = findRegistration(registrationId);
       if (!registration) return [{ affectedRows: 0 }];
+
       registration.qr_code = qrCode;
       registration.qr_payload = qrPayload;
       registration.qr_created_at = "2026-03-25 10:00:01";
       return [{ affectedRows: 1 }];
     }
 
-    if (normalizedSql.includes("UPDATE registrations") && normalizedSql.includes("SET email_delivery_status = ?")) {
+    if (
+      normalizedSql.includes("UPDATE registrations") &&
+      normalizedSql.includes("SET email_delivery_status = ?")
+    ) {
+      if (forceEmailStatusUpdateError) {
+        throw new Error(forceEmailStatusUpdateError);
+      }
+
       const [status, emailSentAt, errorMessage, registrationId] = params;
       const registration = findRegistration(registrationId);
       if (!registration) return [{ affectedRows: 0 }];
+
       registration.email_delivery_status = status;
       registration.email_sent_at = emailSentAt ? "2026-03-25 10:00:02" : null;
       registration.email_error_message = errorMessage;
@@ -500,7 +688,21 @@ const mockPool = {
     }
 
     if (normalizedSql.includes("INSERT INTO registration_email_logs")) {
-      const [registrationId, eventId, recipientEmail, sendType, deliveryStatus, messageId, errorMessage, qrPayload] = params;
+      if (forceEmailLogInsertError) {
+        throw new Error(forceEmailLogInsertError);
+      }
+
+      const [
+        registrationId,
+        eventId,
+        recipientEmail,
+        sendType,
+        deliveryStatus,
+        messageId,
+        errorMessage,
+        qrPayload
+      ] = params;
+
       const newLog = {
         id: registrationEmailLogs.length + 1,
         registration_id: Number(registrationId),
@@ -513,14 +715,21 @@ const mockPool = {
         qr_payload: qrPayload,
         created_at: `2026-03-25 10:00:${String(registrationEmailLogs.length + 10).padStart(2, "0")}`
       };
+
       registrationEmailLogs.push(newLog);
       return [{ insertId: newLog.id }];
     }
 
-    if (normalizedSql.includes("UPDATE registrations") && normalizedSql.includes("SET checked_in_at = NOW()")) {
+    if (
+      normalizedSql.includes("UPDATE registrations") &&
+      normalizedSql.includes("SET checked_in_at = NOW()")
+    ) {
       const [eventId, registrationId] = params;
       const registration = findRegistrationForEvent(eventId, registrationId);
-      if (!registration || registration.checked_in_at != null) return [{ affectedRows: 0 }];
+      if (!registration || registration.checked_in_at != null) {
+        return [{ affectedRows: 0 }];
+      }
+
       registration.checked_in_at = "2026-03-25 18:15:00";
       return [{ affectedRows: 1 }];
     }
@@ -535,12 +744,11 @@ const mockEmailService = {
     SENT: "Đã gửi",
     FAILED: "Gửi thất bại"
   }),
-  createMailerTransport() {
-    return { transport: "mock" };
-  },
+
   buildQrPayload({ event, registration }) {
     return buildMockQrPayload(event, registration);
   },
+
   async sendConfirmationEmail({ event, registration, qrPayload }) {
     if (forcedSendError) {
       throw new Error(forcedSendError);
@@ -560,13 +768,10 @@ const mockEmailService = {
       subject: `[Xac nhan dang ky] ${event.title}`
     };
   },
-  async sendFeedbackInvitationEmail({ event, registration, feedbackUrl }) {
+
+  async sendFeedbackLinkEmail({ event, registration, feedbackUrl }) {
     if (forcedSendError) {
       throw new Error(forcedSendError);
-    }
-
-    if (!registration.email || !String(registration.email).includes("@")) {
-      throw new Error("Email người tham gia không hợp lệ.");
     }
 
     sentEmails.push({
@@ -578,17 +783,49 @@ const mockEmailService = {
 
     return {
       messageId: `mock-feedback-${sentEmails.length}`,
-      subject: `[Feedback su kien] ${event.title}`,
+      subject: `[Feedback] ${event.title}`,
+      feedbackUrl
+    };
+  },
+
+  async sendFeedbackInvitationEmail({ event, registration, feedbackUrl }) {
+    if (forcedSendError) {
+      throw new Error(forcedSendError);
+    }
+
+    sentEmails.push({
+      type: "feedback",
+      event: clone(event),
+      registration: clone(registration),
+      feedbackUrl
+    });
+
+    return {
+      messageId: `mock-feedback-${sentEmails.length}`,
+      subject: `[Feedback] ${event.title}`,
       feedbackUrl
     };
   }
 };
 
 const dbPath = path.resolve(__dirname, "../src/config/db.js");
-require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: mockPool };
+require.cache[dbPath] = {
+  id: dbPath,
+  filename: dbPath,
+  loaded: true,
+  exports: mockPool
+};
 
-const emailServicePath = path.resolve(__dirname, "../src/services/confirmationEmailService.js");
-require.cache[emailServicePath] = { id: emailServicePath, filename: emailServicePath, loaded: true, exports: mockEmailService };
+const emailServicePath = path.resolve(
+  __dirname,
+  "../src/services/confirmationEmailService.js"
+);
+require.cache[emailServicePath] = {
+  id: emailServicePath,
+  filename: emailServicePath,
+  loaded: true,
+  exports: mockEmailService
+};
 
 process.env.ADMIN_BOOTSTRAP_USERNAME = "admin";
 process.env.ADMIN_BOOTSTRAP_EMAIL = "admin@example.com";
@@ -611,7 +848,9 @@ async function withServer(run) {
   try {
     await run(`http://127.0.0.1:${server.address().port}`);
   } finally {
-    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    await new Promise((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve()))
+    );
   }
 }
 
@@ -623,17 +862,21 @@ async function createAdminRequest(baseUrl) {
   });
   const loginPayload = await loginResponse.json();
 
-  assert.equal(loginResponse.status, 200, loginPayload?.message || "Admin login failed in test.");
+  assert.equal(
+    loginResponse.status,
+    200,
+    loginPayload?.message || "Admin login failed in test."
+  );
 
   const rawCookie = loginResponse.headers.get("set-cookie") || "";
   const sessionCookie = rawCookie.split(";")[0];
   assert.ok(sessionCookie.startsWith("admin_session="));
 
-  return (path, init = {}) => {
+  return (requestPath, init = {}) => {
     const headers = new Headers(init.headers || {});
     headers.set("cookie", sessionCookie);
 
-    return fetch(`${baseUrl}${path}`, {
+    return fetch(`${baseUrl}${requestPath}`, {
       ...init,
       headers
     });
@@ -673,12 +916,8 @@ test("GET /api/events trả về danh sách sự kiện kèm registration_count"
     assert.equal(response.status, 200);
     assert.equal(data.length, 3);
     assert.equal(data[0].registration_count, 2);
-    assert.equal(data[0].feedback_enabled, true);
-    assert.equal(data[0].feedback_response_count, 0);
     assert.equal(data[1].registration_count, 1);
-    assert.equal(data[1].feedback_enabled, false);
     assert.equal(data[2].registration_count, 0);
-    assert.equal(data[2].feedback_enabled, false);
   });
 });
 
@@ -691,7 +930,10 @@ test("GET /api/events/:id/registrations trả về đúng danh sách theo sự k
     assert.equal(response.status, 200);
     assert.equal(data.event.id, 1);
     assert.equal(data.totalRegistrations, 2);
-    assert.deepEqual(data.registrations.map((item) => item.full_name), ["Tran Thi B", "Nguyen Van A"]);
+    assert.deepEqual(
+      data.registrations.map((item) => item.full_name),
+      ["Tran Thi B", "Nguyen Van A"]
+    );
     assert.equal(data.registrations[0].email_delivery_status, "Đã gửi");
     assert.equal(data.registrations[0].check_in_status, "Đã check-in");
     assert.equal(data.registrations[1].check_in_status, "Chưa check-in");
@@ -701,7 +943,10 @@ test("GET /api/events/:id/registrations trả về đúng danh sách theo sự k
 test("GET /api/events/:id/registrations/search tìm được theo email, MSSV hoặc mã đăng ký", async () => {
   await withServer(async (baseUrl) => {
     const adminFetch = await createAdminRequest(baseUrl);
-    const byEmail = await adminFetch(`/api/events/1/registrations/search?keyword=sv001@example.com`);
+
+    const byEmail = await adminFetch(
+      `/api/events/1/registrations/search?keyword=sv001@example.com`
+    );
     const emailData = await byEmail.json();
     assert.equal(byEmail.status, 200);
     assert.equal(emailData.registration.id, 1);
@@ -736,7 +981,6 @@ test("POST /api/events/:id/check-in/manual cập nhật thời gian check-in", a
   });
 });
 
-
 test("POST /api/events/:id/check-in/manual trả cảnh báo khi người tham gia đã check-in trước đó", async () => {
   await withServer(async (baseUrl) => {
     const originalCheckinTime = findRegistration(2).checked_in_at;
@@ -764,7 +1008,12 @@ test("POST /api/events/:id/check-in/qr quét QR hợp lệ và cập nhật th�
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        qr_content: JSON.stringify({ registrationId: 1, eventId: 1, studentId: "SV001", email: "sv001@example.com" })
+        qr_content: JSON.stringify({
+          registrationId: 1,
+          eventId: 1,
+          studentId: "SV001",
+          email: "sv001@example.com"
+        })
       })
     });
     const data = await response.json();
@@ -790,7 +1039,10 @@ test("POST /api/events/:id/check-in/qr trả lỗi khi QR thuộc sự kiện kh
     const data = await response.json();
 
     assert.equal(response.status, 409);
-    assert.equal(data.message, "QR thuộc sự kiện khác, không thể check-in cho sự kiện hiện tại.");
+    assert.equal(
+      data.message,
+      "QR thuộc sự kiện khác, không thể check-in cho sự kiện hiện tại."
+    );
     assert.equal(data.registration.id, 3);
     assert.equal(data.registration.event_id, 2);
   });
@@ -838,7 +1090,13 @@ test("POST /api/registrations đăng ký thành công, gửi email xác nhận v
     const response = await fetch(`${baseUrl}/api/registrations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event_id: 3, full_name: "Pham Thi D", student_id: "sv010", email: "sv010@example.com", phone: "0901111222" })
+      body: JSON.stringify({
+        event_id: 3,
+        full_name: "Pham Thi D",
+        student_id: "sv010",
+        email: "sv010@example.com",
+        phone: "0901111222"
+      })
     });
     const data = await response.json();
 
@@ -858,10 +1116,13 @@ test("POST /api/registrations đăng ký thành công, gửi email xác nhận v
 test("POST /api/events/:eventId/registrations/:registrationId/resend-confirmation-email gửi lại đúng QR đã chuẩn hóa và lưu lịch sử resend", async () => {
   await withServer(async (baseUrl) => {
     const adminFetch = await createAdminRequest(baseUrl);
-    const response = await adminFetch(`/api/events/1/registrations/1/resend-confirmation-email`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" }
-    });
+    const response = await adminFetch(
+      `/api/events/1/registrations/1/resend-confirmation-email`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      }
+    );
     const data = await response.json();
 
     const expectedQrPayload = buildMockQrPayload(findEvent(1), findRegistration(1));
@@ -884,10 +1145,13 @@ test("POST /api/events/:eventId/registrations/:registrationId/resend-confirmatio
     findRegistration(1).email = "email-khong-hop-le";
 
     const adminFetch = await createAdminRequest(baseUrl);
-    const response = await adminFetch(`/api/events/1/registrations/1/resend-confirmation-email`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" }
-    });
+    const response = await adminFetch(
+      `/api/events/1/registrations/1/resend-confirmation-email`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      }
+    );
     const data = await response.json();
 
     assert.equal(response.status, 400);
@@ -900,15 +1164,65 @@ test("POST /api/events/:eventId/registrations/:registrationId/resend-confirmatio
   });
 });
 
+test("POST /api/events/:eventId/registrations/:registrationId/resend-confirmation-email vẫn trả thành công khi lưu lịch sử thất bại sau lúc gửi mail", async () => {
+  await withServer(async (baseUrl) => {
+    forceEmailLogInsertError = "Unknown column 'send_action' in 'field list'";
+
+    const response = await fetch(
+      `${baseUrl}/api/events/1/registrations/1/resend-confirmation-email`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      }
+    );
+    const data = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(data.message, "Đã gửi lại email xác nhận thành công.");
+    assert.match(data.warning, /Không thể lưu lịch sử gửi email/);
+    assert.equal(sentEmails.length, 1);
+    assert.equal(findRegistration(1).email_delivery_status, "Đã gửi");
+    assert.equal(registrationEmailLogs.length, 0);
+  });
+});
+
+test("POST /api/events/:eventId/registrations/:registrationId/resend-confirmation-email vẫn trả thành công khi cập nhật trạng thái lỗi sau lúc gửi mail", async () => {
+  await withServer(async (baseUrl) => {
+    findRegistration(3).email_delivery_status = "Chờ gửi";
+    findRegistration(3).email_sent_at = null;
+    forceEmailStatusUpdateError = "ER_BAD_FIELD_ERROR";
+
+    const response = await fetch(
+      `${baseUrl}/api/events/2/registrations/3/resend-confirmation-email`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      }
+    );
+    const data = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(data.message, "Đã gửi lại email xác nhận thành công.");
+    assert.match(data.warning, /Không thể cập nhật trạng thái email/);
+    assert.equal(sentEmails.length, 1);
+    assert.equal(registrationEmailLogs.length, 1);
+    assert.equal(registrationEmailLogs[0].send_type, "resend");
+    assert.equal(findRegistration(3).email_delivery_status, "Chờ gửi");
+  });
+});
+
 test("POST /api/events/:eventId/registrations/:registrationId/resend-confirmation-email trả lỗi phù hợp khi gửi email thất bại", async () => {
   await withServer(async (baseUrl) => {
     forcedSendError = "SMTP unavailable";
 
     const adminFetch = await createAdminRequest(baseUrl);
-    const response = await adminFetch(`/api/events/1/registrations/1/resend-confirmation-email`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" }
-    });
+    const response = await adminFetch(
+      `/api/events/1/registrations/1/resend-confirmation-email`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      }
+    );
     const data = await response.json();
 
     assert.equal(response.status, 502);
@@ -921,7 +1235,6 @@ test("POST /api/events/:eventId/registrations/:registrationId/resend-confirmatio
     assert.equal(registrationEmailLogs[0].error_message, "SMTP unavailable");
   });
 });
-
 
 test("POST /api/events/:id/send-feedback-links gửi link feedback cho toàn bộ người đăng ký", async () => {
   await withServer(async (baseUrl) => {
@@ -938,7 +1251,11 @@ test("POST /api/events/:id/send-feedback-links gửi link feedback cho toàn b�
     assert.equal(data.totalRecipients, 2);
     assert.match(data.feedbackUrl, /\/FeedbackSuKien.html\?eventId=1$/);
     assert.equal(sentEmails.filter((item) => item.type === "feedback").length, 2);
-    assert.ok(sentEmails.every((item) => item.type !== "feedback" || item.feedbackUrl === data.feedbackUrl));
+    assert.ok(
+      sentEmails.every(
+        (item) => item.type !== "feedback" || item.feedbackUrl === data.feedbackUrl
+      )
+    );
   });
 });
 
