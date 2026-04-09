@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Club Event Manager</title>
+  <link rel="stylesheet" href="./css/shared.css" />
+  <link rel="stylesheet" href="./css/Home.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand" href="./index.html">
+        <span class="brand-mark">CE</span>
+        <span class="brand-copy">
+          <strong>Club Event Manager</strong>
+          <span>Hệ thống quản lý sự kiện câu lạc bộ</span>
+        </span>
+      </a>
+      <nav class="site-nav">
+        <a class="nav-link active" href="./index.html">Trang chủ</a>
+        <a class="nav-link" href="./FormDangKy.html">Đăng ký sự kiện</a>
+        <a id="home-quick-login-link" class="nav-link" href="./LoginAdmin.html">Đăng nhập admin</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-wrap home-page">
+    <section class="page-hero home-hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Trang chủ hệ thống</p>
+        <h1>Quản lý sự kiện CLB gọn gàng, hiện đại và dễ sử dụng</h1>
+        <p class="page-subtitle">
+          Người dùng có thể xem và đăng ký sự kiện ngay mà không cần đăng nhập. Khu vực quản trị được tách riêng cho admin để tạo sự kiện,
+          theo dõi danh sách đăng ký, check-in và thu thập feedback sau chương trình.
+        </p>
+
+        <div class="hero-actions">
+          <a class="primary-btn" href="./FormDangKy.html">Đăng ký tham gia</a>
+          <a id="home-admin-action" class="outline-btn light-outline" href="./LoginAdmin.html">Đăng nhập admin</a>
+          <button id="home-logout-button" type="button" class="ghost-btn light-ghost hidden">Đăng xuất admin</button>
+        </div>
+
+        <p id="home-session-text" class="hero-support-text">
+          Người dùng có thể đăng ký sự kiện ngay, còn admin đăng nhập để quản trị toàn bộ hệ thống.
+        </p>
+      </div>
+
+      <div class="hero-side stat-grid">
+        <article class="stat-card">
+          <span class="stat-label">Luồng public</span>
+          <strong>Đăng ký không cần tài khoản</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">Luồng admin</span>
+          <strong>Đăng nhập để quản trị toàn diện</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">Tác vụ hỗ trợ</span>
+          <strong>Check-in, export, feedback</strong>
+        </article>
+      </div>
+    </section>
+
+    <section class="quick-link-section section-card">
+      <div class="section-header">
+        <div>
+          <p class="section-kicker">Đi nhanh đến chức năng chính</p>
+          <h2 class="section-title">Bắt đầu trong vài giây</h2>
+          <p class="section-text">Gọn gàng và hiện đại</p>
+        </div>
+      </div>
+
+      <div class="quick-link-grid">
+        <a class="quick-link-card" href="./FormDangKy.html">
+          <div class="quick-link-icon">01</div>
+          <h3>Đăng ký sự kiện</h3>
+          <p>Mở form công khai để người tham gia chọn sự kiện và gửi thông tin đăng ký.</p>
+          <span>Xem form</span>
+        </a>
+
+        <a class="quick-link-card" href="./LoginAdmin.html">
+          <div class="quick-link-icon">02</div>
+          <h3>Đăng nhập admin</h3>
+          <p>Truy cập khu vực quản trị dành riêng cho ban tổ chức hoặc quản trị viên.</p>
+          <span>Vào đăng nhập</span>
+        </a>
+
+        <a class="quick-link-card" href="./TaoSuKien.html">
+          <div class="quick-link-icon">03</div>
+          <h3>Quản lý sự kiện</h3>
+          <p>Sau khi đăng nhập, admin có thể tạo sự kiện, xem đăng ký, check-in và xuất dữ liệu.</p>
+          <span>Mở quản trị</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="feature-section section-card">
+      <div class="section-header">
+        <div>
+          <p class="section-kicker">Điểm nổi bật</p>
+          <h2 class="section-title">Trải nghiệm gọn, rõ và chuyên nghiệp</h2>
+        </div>
+      </div>
+
+      <div class="feature-grid">
+        <article class="feature-card">
+          <h3>Giao diện đồng nhất</h3>
+          <p>Trang chủ, form đăng ký, đăng nhập và khu vực quản trị đều dùng chung hệ thiết kế mới để nhìn chuyên nghiệp hơn.</p>
+        </article>
+        <article class="feature-card">
+          <h3>Phân quyền rõ ràng</h3>
+          <p>Người dùng chỉ cần mở form là đăng ký được. Admin mới cần đăng nhập để sử dụng toàn bộ chức năng quản trị.</p>
+        </article>
+        <article class="feature-card">
+          <h3>Vận hành thực tế</h3>
+          <p>Đã giữ nguyên luồng quản lý sự kiện, danh sách đăng ký, check-in QR, export Excel và feedback sau sự kiện.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script src="./js/app-config.js"></script>
+  <script src="./js/Home.js"></script>
+</body>
+</html>

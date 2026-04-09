@@ -10,8 +10,19 @@ const pool = require("./config/db");
 const {
   EMAIL_STATUS,
   buildQrPayload: buildEmailQrPayload,
-  sendConfirmationEmail
+  sendConfirmationEmail,
+  sendFeedbackInvitationEmail,
+  createMailerTransport
 } = require("./services/confirmationEmailService");
+const {
+  ADMIN_SESSION_COOKIE_NAME,
+  getAdminSessionConfig,
+  createAdminSessionToken,
+  verifyAdminSessionToken,
+  authenticateAdmin,
+  getSessionTokenFromRequest,
+  ensureAdminAuthInfrastructure
+} = require("./services/adminAuthService");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -21,7 +32,78 @@ const EMAIL_SEND_TYPES = Object.freeze({
   RESEND: "resend"
 });
 
-app.use(cors());
+function buildCookieOptions(maxAgeMs = 0) {
+  return [
+    `${ADMIN_SESSION_COOKIE_NAME}=`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    maxAgeMs > 0 ? `Max-Age=${Math.floor(maxAgeMs / 1000)}` : "Max-Age=0"
+  ].join("; ");
+}
+
+function setAdminSessionCookie(res, sessionToken) {
+  const { sessionTtlHours } = getAdminSessionConfig();
+  const maxAgeMs = sessionTtlHours * 60 * 60 * 1000;
+  res.setHeader(
+    "Set-Cookie",
+    buildCookieOptions(maxAgeMs).replace(
+      `${ADMIN_SESSION_COOKIE_NAME}=`,
+      `${ADMIN_SESSION_COOKIE_NAME}=${encodeURIComponent(sessionToken)}`
+    )
+  );
+}
+
+function clearAdminSessionCookie(res) {
+  res.setHeader("Set-Cookie", buildCookieOptions(0));
+}
+
+async function attachAdminSession(req, res, next) {
+  try {
+    const token = getSessionTokenFromRequest(req);
+    const verificationResult = await verifyAdminSessionToken(token);
+
+    req.adminSession = verificationResult.isValid
+      ? {
+          isAuthenticated: true,
+          ...verificationResult.session
+        }
+      : {
+          isAuthenticated: false
+        };
+
+    next();
+  } catch (error) {
+    req.adminSession = {
+      isAuthenticated: false
+    };
+    next();
+  }
+}
+
+function requireAdminApiAuth(req, res, next) {
+  if (req.adminSession?.isAuthenticated) {
+    return next();
+  }
+
+  return res.status(401).json({
+    message: "Vui lòng đăng nhập bằng tài khoản admin để sử dụng chức năng quản trị.",
+    code: "ADMIN_AUTH_REQUIRED"
+  });
+}
+
+function requireAdminPageAuth(req, res, next) {
+  if (req.adminSession?.isAuthenticated) {
+    return next();
+  }
+
+  const redirectPath = encodeURIComponent(req.originalUrl || "/TaoSuKien.html");
+  return res.redirect(`/LoginAdmin.html?redirect=${redirectPath}`);
+}
+
+app.use(attachAdminSession);
+
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 function normalizeText(value) {
@@ -62,6 +144,103 @@ function normalizeManualCheckinKeyword(value) {
   return normalizeText(value);
 }
 
+function parseScannedQrContent(value) {
+  const normalizedValue = normalizeText(value);
+  const parsedContent = {
+    raw: normalizedValue,
+    registrationId: null,
+    eventId: null
+  };
+
+  if (!normalizedValue) {
+    return parsedContent;
+  }
+
+  if (/^DK-(\d+)$/i.test(normalizedValue)) {
+    parsedContent.registrationId = parsePositiveInteger(
+      normalizedValue.replace(/^DK-/i, "")
+    );
+    return parsedContent;
+  }
+
+  if (normalizedValue.startsWith("{")) {
+    try {
+      const payload = JSON.parse(normalizedValue);
+      parsedContent.registrationId = parsePositiveInteger(payload?.registrationId);
+      parsedContent.eventId = parsePositiveInteger(payload?.eventId);
+      if (parsedContent.registrationId || parsedContent.eventId) {
+        return parsedContent;
+      }
+    } catch (error) {
+      // Ignore malformed JSON and continue with text-based parsing.
+    }
+  }
+
+  const registrationIdMatch = normalizedValue.match(/Ma\s*dang\s*ky\s*:\s*(\d+)/i);
+  const eventIdMatch = normalizedValue.match(/Ma\s*su\s*kien\s*:\s*(\d+)/i);
+
+  if (registrationIdMatch) {
+    parsedContent.registrationId = parsePositiveInteger(registrationIdMatch[1]);
+  }
+
+  if (eventIdMatch) {
+    parsedContent.eventId = parsePositiveInteger(eventIdMatch[1]);
+  }
+
+  return parsedContent;
+}
+
+function normalizeBaseUrl(value) {
+  return String(value ?? "").trim().replace(/\/$/, "");
+}
+
+function normalizeFrontendRedirectPath(value) {
+  const rawValue = normalizeText(value);
+  if (!rawValue) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(rawValue)) {
+    try {
+      const parsedUrl = new URL(rawValue);
+      return `${parsedUrl.pathname || "/"}${parsedUrl.search || ""}`;
+    } catch (error) {
+      return "";
+    }
+  }
+
+  if (rawValue.startsWith("javascript:") || rawValue.startsWith("//")) {
+    return "";
+  }
+
+  if (rawValue.startsWith("./")) {
+    return `/${rawValue.slice(2)}`;
+  }
+
+  return rawValue.startsWith("/") ? rawValue : `/${rawValue}`;
+}
+
+function resolvePublicBaseUrl(req) {
+  const configuredBaseUrl = normalizeBaseUrl(
+    process.env.PUBLIC_APP_BASE_URL || process.env.FRONTEND_PUBLIC_URL
+  );
+  if (configuredBaseUrl) {
+    return configuredBaseUrl;
+  }
+
+  const host = normalizeText(req.get("host"));
+  if (!host) {
+    return "http://localhost:5000";
+  }
+
+  return `${req.protocol}://${host}`;
+}
+
+function buildFeedbackFormUrl(req, eventId) {
+  const publicBaseUrl = resolvePublicBaseUrl(req);
+  return `${publicBaseUrl}/FeedbackSuKien.html?eventId=${eventId}`;
+}
+
 function mapRegistrationForClient(registration) {
   return {
     ...registration,
@@ -71,6 +250,14 @@ function mapRegistrationForClient(registration) {
     email_sent_at: registration.email_sent_at || null,
     email_error_message: registration.email_error_message || null,
     is_checked_in: Boolean(registration.checked_in_at)
+  };
+}
+
+function buildAlreadyCheckedInPayload(registration) {
+  return {
+    message: "Đã check-in",
+    first_checked_in_at: registration?.checked_in_at || null,
+    registration: registration ? mapRegistrationForClient(registration) : null
   };
 }
 
@@ -166,7 +353,12 @@ async function findRegistrationForManualCheckin(eventId, keyword) {
       ORDER BY id DESC
       LIMIT 1
     `;
-    params = [eventId, Number.parseInt(registrationCodeMatch[1], 10), normalizedEmail, normalizedStudentId];
+    params = [
+      eventId,
+      Number.parseInt(registrationCodeMatch[1], 10),
+      normalizedEmail,
+      normalizedStudentId
+    ];
   }
 
   const [rows] = await pool.query(sql, params);
@@ -245,11 +437,16 @@ function validateRegistrationPayload(payload) {
   };
 }
 
-
 function validateFeedbackFormPayload(payload) {
-  const satisfactionQuestion = normalizeText(payload.satisfaction_question) || "Mức độ hài lòng của bạn về sự kiện là gì?";
-  const commentQuestion = normalizeText(payload.comment_question) || "Bạn có góp ý gì để sự kiện sau tốt hơn không?";
-  const successMessage = normalizeText(payload.success_message) || "Cảm ơn bạn đã gửi phản hồi cho ban tổ chức.";
+  const satisfactionQuestion =
+    normalizeText(payload.satisfaction_question) ||
+    "Mức độ hài lòng của bạn về sự kiện là gì?";
+  const commentQuestion =
+    normalizeText(payload.comment_question) ||
+    "Bạn có góp ý gì để sự kiện sau tốt hơn không?";
+  const successMessage =
+    normalizeText(payload.success_message) ||
+    "Cảm ơn bạn đã gửi phản hồi cho ban tổ chức.";
   const isEnabled = Boolean(payload.is_enabled);
 
   return {
@@ -291,7 +488,11 @@ function validateFeedbackSubmissionPayload(payload) {
     };
   }
 
-  if (!Number.isInteger(satisfactionRating) || satisfactionRating < 1 || satisfactionRating > 5) {
+  if (
+    !Number.isInteger(satisfactionRating) ||
+    satisfactionRating < 1 ||
+    satisfactionRating > 5
+  ) {
     return {
       isValid: false,
       message: "satisfaction_rating phải nằm trong khoảng từ 1 đến 5."
@@ -311,12 +512,14 @@ function validateFeedbackSubmissionPayload(payload) {
 }
 
 function escapeFileName(value) {
-  return String(value ?? "su-kien")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase() || "su-kien";
+  return (
+    String(value ?? "su-kien")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase() || "su-kien"
+  );
 }
 
 function formatDateForFile(date = new Date()) {
@@ -358,9 +561,21 @@ async function ensureRegistrationEmailInfrastructure() {
     "email_delivery_status",
     `VARCHAR(30) NOT NULL DEFAULT '${EMAIL_STATUS.PENDING}' AFTER qr_created_at`
   );
-  await ensureTableColumn("registrations", "email_sent_at", "DATETIME NULL AFTER email_delivery_status");
-  await ensureTableColumn("registrations", "email_error_message", "TEXT NULL AFTER email_sent_at");
-  await ensureTableColumn("registrations", "checked_in_at", "DATETIME NULL AFTER email_error_message");
+  await ensureTableColumn(
+    "registrations",
+    "email_sent_at",
+    "DATETIME NULL AFTER email_delivery_status"
+  );
+  await ensureTableColumn(
+    "registrations",
+    "email_error_message",
+    "TEXT NULL AFTER email_sent_at"
+  );
+  await ensureTableColumn(
+    "registrations",
+    "checked_in_at",
+    "DATETIME NULL AFTER email_error_message"
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS registration_email_logs (
@@ -383,13 +598,41 @@ async function ensureRegistrationEmailInfrastructure() {
     )
   `);
 
-  await ensureTableColumn("registration_email_logs", "recipient_email", "VARCHAR(255) NOT NULL DEFAULT '' AFTER event_id");
-  await ensureTableColumn("registration_email_logs", "send_type", "VARCHAR(20) NOT NULL DEFAULT 'initial' AFTER recipient_email");
-  await ensureTableColumn("registration_email_logs", "delivery_status", `VARCHAR(30) NOT NULL DEFAULT '${EMAIL_STATUS.PENDING}' AFTER send_type`);
-  await ensureTableColumn("registration_email_logs", "message_id", "VARCHAR(255) NULL AFTER delivery_status");
-  await ensureTableColumn("registration_email_logs", "error_message", "TEXT NULL AFTER message_id");
-  await ensureTableColumn("registration_email_logs", "qr_payload", "LONGTEXT NULL AFTER error_message");
-  await ensureTableColumn("registration_email_logs", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER qr_payload");
+  await ensureTableColumn(
+    "registration_email_logs",
+    "recipient_email",
+    "VARCHAR(255) NOT NULL DEFAULT '' AFTER event_id"
+  );
+  await ensureTableColumn(
+    "registration_email_logs",
+    "send_type",
+    "VARCHAR(20) NOT NULL DEFAULT 'initial' AFTER recipient_email"
+  );
+  await ensureTableColumn(
+    "registration_email_logs",
+    "delivery_status",
+    `VARCHAR(30) NOT NULL DEFAULT '${EMAIL_STATUS.PENDING}' AFTER send_type`
+  );
+  await ensureTableColumn(
+    "registration_email_logs",
+    "message_id",
+    "VARCHAR(255) NULL AFTER delivery_status"
+  );
+  await ensureTableColumn(
+    "registration_email_logs",
+    "error_message",
+    "TEXT NULL AFTER message_id"
+  );
+  await ensureTableColumn(
+    "registration_email_logs",
+    "qr_payload",
+    "LONGTEXT NULL AFTER error_message"
+  );
+  await ensureTableColumn(
+    "registration_email_logs",
+    "created_at",
+    "TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER qr_payload"
+  );
 }
 
 async function ensureFeedbackTables() {
@@ -684,6 +927,7 @@ async function findRegistrationById(registrationId) {
         email_delivery_status,
         email_sent_at,
         email_error_message,
+        checked_in_at,
         created_at
       FROM registrations
       WHERE id = ?
@@ -693,6 +937,42 @@ async function findRegistrationById(registrationId) {
   );
 
   return rows[0] || null;
+}
+
+async function findRegistrationForQrScan(qrContent) {
+  const parsedQrContent = parseScannedQrContent(qrContent);
+
+  if (!parsedQrContent.registrationId) {
+    return {
+      registration: null,
+      parsedQrContent
+    };
+  }
+
+  const registration = await findRegistrationById(parsedQrContent.registrationId);
+
+  return {
+    registration,
+    parsedQrContent
+  };
+}
+
+async function markRegistrationAsCheckedIn(eventId, registrationId) {
+  const [result] = await pool.query(
+    `
+      UPDATE registrations
+      SET checked_in_at = NOW()
+      WHERE event_id = ? AND id = ? AND checked_in_at IS NULL
+    `,
+    [eventId, registrationId]
+  );
+
+  const registration = await findRegistrationByIdForEvent(eventId, registrationId);
+
+  return {
+    didUpdate: Number(result?.affectedRows || 0) > 0,
+    registration
+  };
 }
 
 async function updateRegistrationEmailStatus(registrationId, status, errorMessage = null) {
@@ -718,7 +998,12 @@ function isLegacyQrPayload(value) {
 
   try {
     const parsedValue = JSON.parse(normalizedValue);
-    return Boolean(parsedValue && typeof parsedValue === "object" && parsedValue.registrationId && parsedValue.eventId);
+    return Boolean(
+      parsedValue &&
+        typeof parsedValue === "object" &&
+        parsedValue.registrationId &&
+        parsedValue.eventId
+    );
   } catch (error) {
     return false;
   }
@@ -770,7 +1055,16 @@ async function createRegistrationEmailLog({
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
-    [registrationId, eventId, recipientEmail, sendType, deliveryStatus, messageId, errorMessage, qrPayload]
+    [
+      registrationId,
+      eventId,
+      recipientEmail,
+      sendType,
+      deliveryStatus,
+      messageId,
+      errorMessage,
+      qrPayload
+    ]
   );
 
   return {
@@ -794,7 +1088,12 @@ function buildDeliveryMetadataWarningMessage(warnings) {
   return warnings.join(" ");
 }
 
-async function tryUpdateRegistrationEmailStatus(registrationId, status, errorMessage, warnings) {
+async function tryUpdateRegistrationEmailStatus(
+  registrationId,
+  status,
+  errorMessage,
+  warnings
+) {
   try {
     await updateRegistrationEmailStatus(registrationId, status, errorMessage);
   } catch (error) {
@@ -827,7 +1126,12 @@ async function deliverRegistrationConfirmationEmail({
     const error = new Error("Email người đăng ký không hợp lệ.");
     error.statusCode = 400;
 
-    await tryUpdateRegistrationEmailStatus(registration.id, EMAIL_STATUS.FAILED, error.message, warnings);
+    await tryUpdateRegistrationEmailStatus(
+      registration.id,
+      EMAIL_STATUS.FAILED,
+      error.message,
+      warnings
+    );
     error.emailLog = await tryCreateRegistrationEmailLog(
       {
         registrationId: registration.id,
@@ -858,7 +1162,12 @@ async function deliverRegistrationConfirmationEmail({
       transporter
     });
   } catch (emailError) {
-    await tryUpdateRegistrationEmailStatus(registration.id, EMAIL_STATUS.FAILED, emailError.message, warnings);
+    await tryUpdateRegistrationEmailStatus(
+      registration.id,
+      EMAIL_STATUS.FAILED,
+      emailError.message,
+      warnings
+    );
     emailError.emailLog = await tryCreateRegistrationEmailLog(
       {
         registrationId: registration.id,
@@ -876,7 +1185,12 @@ async function deliverRegistrationConfirmationEmail({
     throw emailError;
   }
 
-  await tryUpdateRegistrationEmailStatus(registration.id, EMAIL_STATUS.SENT, null, warnings);
+  await tryUpdateRegistrationEmailStatus(
+    registration.id,
+    EMAIL_STATUS.SENT,
+    null,
+    warnings
+  );
   const emailLog = await tryCreateRegistrationEmailLog(
     {
       registrationId: registration.id,
@@ -928,8 +1242,18 @@ async function buildRegistrationWorkbook(event, registrations) {
     { header: "MSSV", key: "student_id", minWidth: 14, maxWidth: 20 },
     { header: "Email", key: "email", minWidth: 24, maxWidth: 40 },
     { header: "Số điện thoại", key: "phone", minWidth: 16, maxWidth: 24 },
-    { header: "Trạng thái email", key: "email_delivery_status", minWidth: 18, maxWidth: 24 },
-    { header: "Trạng thái check-in", key: "check_in_status", minWidth: 18, maxWidth: 24 },
+    {
+      header: "Trạng thái email",
+      key: "email_delivery_status",
+      minWidth: 18,
+      maxWidth: 24
+    },
+    {
+      header: "Trạng thái check-in",
+      key: "check_in_status",
+      minWidth: 18,
+      maxWidth: 24
+    },
     { header: "Thời gian check-in", key: "checked_in_at", minWidth: 22, maxWidth: 28 },
     { header: "Thời gian đăng ký", key: "created_at", minWidth: 22, maxWidth: 28 }
   ];
@@ -1128,6 +1452,70 @@ async function buildRegistrationWorkbook(event, registrations) {
   return workbook;
 }
 
+app.post("/api/admin/login", async (req, res) => {
+  try {
+    const identifier = normalizeText(req.body?.identifier);
+    const password = normalizeText(req.body?.password);
+    const redirectTo =
+      normalizeFrontendRedirectPath(req.body?.redirect) || "/TaoSuKien.html";
+
+    if (!identifier || !password) {
+      return res.status(400).json({
+        message: "Vui lòng nhập tên đăng nhập/email và mật khẩu."
+      });
+    }
+
+    const admin = await authenticateAdmin({ identifier, password });
+    if (!admin) {
+      return res.status(401).json({
+        message: "Thông tin đăng nhập admin không đúng."
+      });
+    }
+
+    const sessionToken = createAdminSessionToken(admin);
+    setAdminSessionCookie(res, sessionToken);
+
+    return res.status(200).json({
+      message: "Đăng nhập admin thành công.",
+      admin,
+      redirectTo
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể đăng nhập admin lúc này.",
+      error: error.message
+    });
+  }
+});
+
+app.post("/api/admin/logout", (req, res) => {
+  clearAdminSessionCookie(res);
+  return res.status(200).json({
+    message: "Đăng xuất admin thành công."
+  });
+});
+
+app.get("/api/admin/session", (req, res) => {
+  if (!req.adminSession?.isAuthenticated) {
+    return res.status(401).json({
+      message: "Chưa đăng nhập admin.",
+      code: "ADMIN_NOT_AUTHENTICATED"
+    });
+  }
+
+  return res.status(200).json({
+    isAuthenticated: true,
+    admin: {
+      id: req.adminSession.id,
+      username: req.adminSession.username,
+      email: req.adminSession.email,
+      full_name: req.adminSession.full_name,
+      role: req.adminSession.role
+    },
+    expiresAt: req.adminSession.expiresAt
+  });
+});
+
 app.get("/api/health", async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT 1 AS connected");
@@ -1199,7 +1587,7 @@ app.get("/api/events/:id", async (req, res) => {
   }
 });
 
-app.get("/api/events/:id/registrations", async (req, res) => {
+app.get("/api/events/:id/registrations", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
 
@@ -1230,7 +1618,9 @@ app.get("/api/events/:id/registrations", async (req, res) => {
       checkin
     });
 
-    const totalRegistrations = await getRegistrationsByEventId(eventId, { checkin: "all" }).then((rows) => rows.length);
+    const totalRegistrations = await getRegistrationsByEventId(eventId, {
+      checkin: "all"
+    }).then((rows) => rows.length);
 
     return res.json({
       event,
@@ -1246,7 +1636,7 @@ app.get("/api/events/:id/registrations", async (req, res) => {
   }
 });
 
-app.get("/api/events/:id/registrations/search", async (req, res) => {
+app.get("/api/events/:id/registrations/search", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
     const keyword = normalizeManualCheckinKeyword(req.query.keyword);
@@ -1289,12 +1679,89 @@ app.get("/api/events/:id/registrations/search", async (req, res) => {
   }
 });
 
-app.post("/api/events/:eventId/registrations/:registrationId/resend-confirmation-email", async (req, res) => {
-  let registration = null;
+app.post(
+  "/api/events/:eventId/registrations/:registrationId/resend-confirmation-email",
+  requireAdminApiAuth,
+  async (req, res) => {
+    let registration = null;
 
+    try {
+      const eventId = parsePositiveInteger(req.params.eventId);
+      const registrationId = parsePositiveInteger(req.params.registrationId);
+
+      if (!eventId) {
+        return res.status(400).json({
+          message: "Event id is invalid"
+        });
+      }
+
+      if (!registrationId) {
+        return res.status(400).json({
+          message: "registration_id is invalid"
+        });
+      }
+
+      const event = await findEventById(eventId);
+      if (!event) {
+        return res.status(404).json({
+          message: "Sự kiện không tồn tại"
+        });
+      }
+
+      registration = await findRegistrationByIdForEvent(eventId, registrationId);
+      if (!registration) {
+        return res.status(404).json({
+          message: "Không tìm thấy người đăng ký cho sự kiện này"
+        });
+      }
+
+      const deliveryResult = await deliverRegistrationConfirmationEmail({
+        event,
+        registration,
+        sendType: EMAIL_SEND_TYPES.RESEND
+      });
+
+      const latestRegistration = await findRegistrationByIdForEvent(eventId, registrationId);
+
+      return res.json({
+        message: "Đã gửi lại email xác nhận thành công.",
+        warning: deliveryResult.warningMessage || null,
+        registration: mapRegistrationForClient(latestRegistration || registration),
+        emailLog: deliveryResult.emailLog,
+        qrPayload: deliveryResult.qrPayload
+      });
+    } catch (error) {
+      const eventId = parsePositiveInteger(req.params.eventId);
+      const registrationId = parsePositiveInteger(req.params.registrationId);
+      const latestRegistration =
+        eventId && registrationId
+          ? await findRegistrationByIdForEvent(eventId, registrationId).catch(() => null)
+          : null;
+
+      return res.status(error.statusCode || 502).json({
+        message:
+          error.statusCode === 400
+            ? error.message
+            : "Gửi lại email xác nhận thất bại.",
+        error: error.message,
+        warnings: Array.isArray(error.deliveryWarnings) ? error.deliveryWarnings : [],
+        registration: latestRegistration
+          ? mapRegistrationForClient(latestRegistration)
+          : registration
+            ? mapRegistrationForClient(registration)
+            : null,
+        emailLog: error.emailLog || null
+      });
+    }
+  }
+);
+
+app.post("/api/events/:id/check-in/qr", requireAdminApiAuth, async (req, res) => {
   try {
-    const eventId = parsePositiveInteger(req.params.eventId);
-    const registrationId = parsePositiveInteger(req.params.registrationId);
+    const eventId = parsePositiveInteger(req.params.id);
+    const qrContent = normalizeText(
+      req.body?.qr_content || req.body?.qrContent || req.body?.value
+    );
 
     if (!eventId) {
       return res.status(400).json({
@@ -1302,9 +1769,9 @@ app.post("/api/events/:eventId/registrations/:registrationId/resend-confirmation
       });
     }
 
-    if (!registrationId) {
+    if (!qrContent) {
       return res.status(400).json({
-        message: "registration_id is invalid"
+        message: "Vui lòng cung cấp nội dung QR để check-in."
       });
     }
 
@@ -1315,48 +1782,60 @@ app.post("/api/events/:eventId/registrations/:registrationId/resend-confirmation
       });
     }
 
-    registration = await findRegistrationByIdForEvent(eventId, registrationId);
+    const { registration, parsedQrContent } = await findRegistrationForQrScan(qrContent);
+
     if (!registration) {
       return res.status(404).json({
-        message: "Không tìm thấy người đăng ký cho sự kiện này"
+        message: "QR không hợp lệ hoặc không tồn tại trong hệ thống.",
+        qrContent
       });
     }
 
-    const deliveryResult = await deliverRegistrationConfirmationEmail({
-      event,
-      registration,
-      sendType: EMAIL_SEND_TYPES.RESEND
-    });
+    if (
+      parsedQrContent.eventId &&
+      Number(parsedQrContent.eventId) !== Number(registration.event_id)
+    ) {
+      return res.status(400).json({
+        message: "QR không hợp lệ cho người tham gia này.",
+        registration: mapRegistrationForClient(registration)
+      });
+    }
 
-    const latestRegistration = await findRegistrationByIdForEvent(eventId, registrationId);
+    if (Number(registration.event_id) !== Number(eventId)) {
+      return res.status(409).json({
+        message: "QR thuộc sự kiện khác, không thể check-in cho sự kiện hiện tại.",
+        registration: mapRegistrationForClient(registration)
+      });
+    }
+
+    if (registration.checked_in_at) {
+      return res.status(409).json(buildAlreadyCheckedInPayload(registration));
+    }
+
+    const checkinResult = await markRegistrationAsCheckedIn(eventId, registration.id);
+
+    if (!checkinResult.registration) {
+      throw new Error("Không tìm thấy người đăng ký sau khi cập nhật check-in.");
+    }
+
+    if (!checkinResult.didUpdate && checkinResult.registration.checked_in_at) {
+      return res.status(409).json(buildAlreadyCheckedInPayload(checkinResult.registration));
+    }
 
     return res.json({
-      message: "Đã gửi lại email xác nhận thành công.",
-      warning: deliveryResult.warningMessage || null,
-      registration: mapRegistrationForClient(latestRegistration || registration),
-      emailLog: deliveryResult.emailLog,
-      qrPayload: deliveryResult.qrPayload
+      message: "Quét QR thành công. Đã cập nhật trạng thái check-in.",
+      event,
+      registration: mapRegistrationForClient(checkinResult.registration)
     });
   } catch (error) {
-    const eventId = parsePositiveInteger(req.params.eventId);
-    const registrationId = parsePositiveInteger(req.params.registrationId);
-    const latestRegistration =
-      eventId && registrationId ? await findRegistrationByIdForEvent(eventId, registrationId).catch(() => null) : null;
-
-    return res.status(error.statusCode || 502).json({
-      message:
-        error.statusCode === 400
-          ? error.message
-          : "Gửi lại email xác nhận thất bại.",
-      error: error.message,
-      warnings: Array.isArray(error.deliveryWarnings) ? error.deliveryWarnings : [],
-      registration: latestRegistration ? mapRegistrationForClient(latestRegistration) : registration ? mapRegistrationForClient(registration) : null,
-      emailLog: error.emailLog || null
+    return res.status(500).json({
+      message: "Không thể check-in bằng QR",
+      error: error.message
     });
   }
 });
 
-app.post("/api/events/:id/check-in/manual", async (req, res) => {
+app.post("/api/events/:id/check-in/manual", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
     const registrationId = parsePositiveInteger(req.body?.registration_id);
@@ -1388,26 +1867,22 @@ app.post("/api/events/:id/check-in/manual", async (req, res) => {
     }
 
     if (registration.checked_in_at) {
-      return res.status(409).json({
-        message: "Người tham gia này đã được check-in trước đó.",
-        registration: mapRegistrationForClient(registration)
-      });
+      return res.status(409).json(buildAlreadyCheckedInPayload(registration));
     }
 
-    await pool.query(
-      `
-        UPDATE registrations
-        SET checked_in_at = NOW()
-        WHERE event_id = ? AND id = ? AND checked_in_at IS NULL
-      `,
-      [eventId, registrationId]
-    );
+    const checkinResult = await markRegistrationAsCheckedIn(eventId, registrationId);
 
-    const updatedRegistration = await findRegistrationByIdForEvent(eventId, registrationId);
+    if (!checkinResult.registration) {
+      throw new Error("Không tìm thấy người đăng ký sau khi cập nhật check-in.");
+    }
+
+    if (!checkinResult.didUpdate && checkinResult.registration.checked_in_at) {
+      return res.status(409).json(buildAlreadyCheckedInPayload(checkinResult.registration));
+    }
 
     return res.json({
       message: "Check-in thủ công thành công.",
-      registration: mapRegistrationForClient(updatedRegistration)
+      registration: mapRegistrationForClient(checkinResult.registration)
     });
   } catch (error) {
     return res.status(500).json({
@@ -1417,7 +1892,7 @@ app.post("/api/events/:id/check-in/manual", async (req, res) => {
   }
 });
 
-app.get("/api/events/:id/registrations/export", async (req, res) => {
+app.get("/api/events/:id/registrations/export", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
 
@@ -1455,7 +1930,7 @@ app.get("/api/events/:id/registrations/export", async (req, res) => {
   }
 });
 
-app.post("/api/events", async (req, res) => {
+app.post("/api/events", requireAdminApiAuth, async (req, res) => {
   try {
     const validation = validateEventPayload(req.body);
 
@@ -1487,7 +1962,7 @@ app.post("/api/events", async (req, res) => {
   }
 });
 
-app.put("/api/events/:id", async (req, res) => {
+app.put("/api/events/:id", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
 
@@ -1534,7 +2009,7 @@ app.put("/api/events/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/events/:id", async (req, res) => {
+app.delete("/api/events/:id", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
 
@@ -1577,8 +2052,7 @@ app.delete("/api/events/:id", async (req, res) => {
   }
 });
 
-
-app.get("/api/events/:id/feedback-form", async (req, res) => {
+app.get("/api/events/:id/feedback-form", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
 
@@ -1620,7 +2094,7 @@ app.get("/api/events/:id/feedback-form", async (req, res) => {
   }
 });
 
-app.put("/api/events/:id/feedback-form", async (req, res) => {
+app.put("/api/events/:id/feedback-form", requireAdminApiAuth, async (req, res) => {
   try {
     const eventId = parsePositiveInteger(req.params.id);
 
@@ -1654,6 +2128,104 @@ app.put("/api/events/:id/feedback-form", async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       message: "Không thể lưu cấu hình feedback",
+      error: error.message
+    });
+  }
+});
+
+app.post("/api/events/:id/send-feedback-links", requireAdminApiAuth, async (req, res) => {
+  try {
+    const eventId = parsePositiveInteger(req.params.id);
+
+    if (!eventId) {
+      return res.status(400).json({
+        message: "Event id is invalid"
+      });
+    }
+
+    const event = await findEventById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        message: "Sự kiện không tồn tại"
+      });
+    }
+
+    const feedbackForm = await findFeedbackFormByEventId(eventId);
+    if (!feedbackForm || !Boolean(feedbackForm.is_enabled)) {
+      return res.status(409).json({
+        message: "Vui lòng mở form feedback trước khi gửi link cho người tham gia."
+      });
+    }
+
+    const registrations = await getRegistrationsByEventId(eventId, { checkin: "all" });
+    if (!registrations.length) {
+      return res.status(404).json({
+        message: "Sự kiện chưa có người đăng ký để gửi link feedback."
+      });
+    }
+
+    const feedbackUrl = buildFeedbackFormUrl(req, eventId);
+    const transporter = createMailerTransport();
+
+    const deliveryResults = await Promise.allSettled(
+      registrations.map((registration) =>
+        sendFeedbackInvitationEmail({
+          event,
+          registration,
+          feedbackUrl,
+          transporter
+        })
+      )
+    );
+
+    const sent = [];
+    const failed = [];
+
+    deliveryResults.forEach((result, index) => {
+      const registration = registrations[index];
+
+      if (result.status === "fulfilled") {
+        sent.push({
+          registration_id: registration.id,
+          full_name: registration.full_name,
+          email: registration.email,
+          message_id: result.value?.messageId || null
+        });
+        return;
+      }
+
+      failed.push({
+        registration_id: registration.id,
+        full_name: registration.full_name,
+        email: registration.email,
+        error: result.reason?.message || "Gửi email thất bại."
+      });
+    });
+
+    const hasSent = sent.length > 0;
+    const hasFailed = failed.length > 0;
+    const statusCode = hasFailed && !hasSent ? 502 : 200;
+
+    let message = `Đã gửi link feedback cho ${sent.length}/${registrations.length} người tham gia.`;
+    if (hasFailed && hasSent) {
+      message = `Đã gửi link feedback cho ${sent.length}/${registrations.length} người tham gia. ${failed.length} email gửi thất bại.`;
+    } else if (hasFailed && !hasSent) {
+      message = "Không thể gửi email feedback cho người tham gia nào.";
+    }
+
+    return res.status(statusCode).json({
+      message,
+      event,
+      feedbackUrl,
+      totalRecipients: registrations.length,
+      sentCount: sent.length,
+      failedCount: failed.length,
+      sent,
+      failed
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Không thể gửi link feedback qua email",
       error: error.message
     });
   }
@@ -1782,7 +2354,8 @@ app.post("/api/events/:id/feedback-responses", async (req, res) => {
     const savedResponse = await findFeedbackResponse(event_id, participant.id);
 
     return res.status(201).json({
-      message: feedbackForm.success_message || "Cảm ơn bạn đã gửi phản hồi cho ban tổ chức.",
+      message:
+        feedbackForm.success_message || "Cảm ơn bạn đã gửi phản hồi cho ban tổ chức.",
       event,
       participant: {
         id: participant.id,
@@ -1806,7 +2379,6 @@ app.post("/api/events/:id/feedback-responses", async (req, res) => {
     });
   }
 });
-
 
 app.post("/api/registrations", async (req, res) => {
   try {
@@ -1888,7 +2460,9 @@ app.post("/api/registrations", async (req, res) => {
     });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
-      const duplicatedBy = error.message.includes("uq_event_email") ? "email" : "student_id";
+      const duplicatedBy = error.message.includes("uq_event_email")
+        ? "email"
+        : "student_id";
 
       return res.status(409).json({
         message: getDuplicateRegistrationMessage(duplicatedBy),
@@ -1904,14 +2478,39 @@ app.post("/api/registrations", async (req, res) => {
   }
 });
 
-app.use(express.static(frontendDir));
-
-app.get("/", (req, res) => {
-  res.redirect("/TaoSuKien.html");
+app.get(["/", "/index.html", "/frontend", "/frontend/", "/frontend/index.html"], (req, res) => {
+  res.sendFile(path.resolve(frontendDir, "index.html"));
 });
 
-const appReady = Promise.all([ensureRegistrationEmailInfrastructure(), ensureFeedbackTables()]).catch((error) => {
-  console.error("Không thể khởi tạo bảng feedback:", error.message);
+app.get(["/LoginAdmin.html", "/frontend/LoginAdmin.html"], (req, res) => {
+  if (req.adminSession?.isAuthenticated) {
+    return res.redirect("/TaoSuKien.html");
+  }
+
+  return res.sendFile(path.resolve(frontendDir, "LoginAdmin.html"));
+});
+
+app.get(["/TaoSuKien.html", "/frontend/TaoSuKien.html"], requireAdminPageAuth, (req, res) => {
+  res.sendFile(path.resolve(frontendDir, "TaoSuKien.html"));
+});
+
+app.get(
+  ["/DanhSachDangKy.html", "/frontend/DanhSachDangKy.html"],
+  requireAdminPageAuth,
+  (req, res) => {
+    res.sendFile(path.resolve(frontendDir, "DanhSachDangKy.html"));
+  }
+);
+
+app.use("/frontend", express.static(frontendDir));
+app.use(express.static(frontendDir));
+
+const appReady = Promise.all([
+  ensureRegistrationEmailInfrastructure(),
+  ensureFeedbackTables(),
+  ensureAdminAuthInfrastructure()
+]).catch((error) => {
+  console.error("Không thể khởi tạo hạ tầng ứng dụng:", error.message);
   throw error;
 });
 
@@ -1920,7 +2519,7 @@ if (require.main === module) {
     .then(() => {
       app.listen(PORT, () => {
         console.log(`Server is running at http://localhost:${PORT}`);
-        console.log(`Frontend: http://localhost:${PORT}/TaoSuKien.html`);
+        console.log(`Frontend: http://localhost:${PORT}/`);
       });
     })
     .catch((error) => {

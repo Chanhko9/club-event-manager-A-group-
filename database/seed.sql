@@ -1,5 +1,10 @@
 USE club_event_manager;
 
+
+INSERT INTO admins (username, email, full_name, password_hash, role, is_active)
+VALUES
+('admin', 'admin@example.com', 'Super Admin', 'scrypt$16384$8$1$00112233445566778899aabbccddeeff$fc2c27027ca03bc969d6e5464ce846f7761540f9fc648764dd5f2a389086cbb2a7ec29fc52f84e2c503af2243c9e2449f3d1919418e64955501ea033fab87bc1', 'super_admin', 1);
+
 INSERT INTO events (title, event_time, location, description)
 VALUES
 ('Workshop Git co ban', '2026-03-25 18:00:00', 'Phong A101', 'Huong dan Git va GitHub cho thanh vien moi'),

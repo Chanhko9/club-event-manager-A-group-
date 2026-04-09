@@ -3,28 +3,46 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gửi feedback sự kiện</title>
+  <title>Feedback sự kiện - Club Event Manager</title>
+  <link rel="stylesheet" href="./css/shared.css" />
   <link rel="stylesheet" href="./css/FeedbackSuKien.css" />
 </head>
 <body>
-  <main class="page-shell">
-    <section class="hero-card">
-      <div>
-        <p class="hero-badge">Feedback sự kiện</p>
-        <h1>Chia sẻ trải nghiệm của bạn sau sự kiện</h1>
-        <p class="hero-text">
-          Bạn chỉ có thể gửi feedback cho sự kiện mà mình đã đăng ký tham gia.
-          Hãy chọn đúng sự kiện và xác minh bằng MSSV + email đã dùng khi đăng ký.
-        </p>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand" href="./index.html">
+        <span class="brand-mark">CE</span>
+        <span class="brand-copy">
+          <strong>Club Event Manager</strong>
+          <span>Feedback sau sự kiện</span>
+        </span>
+      </a>
+      <nav class="site-nav">
+        <a class="nav-link" href="./index.html">Trang chủ</a>
+        <a class="nav-link" href="./FormDangKy.html">Đăng ký sự kiện</a>
+        <a class="nav-link" href="./LoginAdmin.html">Admin</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-wrap feedback-page">
+    <section class="page-hero compact">
+      <div class="hero-copy">
+        <p class="eyebrow">Post-event feedback</p>
+        <h1>Chia sẻ trải nghiệm sau sự kiện</h1>
+        <p class="page-subtitle">Nhập đúng thông tin đã dùng khi đăng ký để mở form feedback của sự kiện bạn đã tham gia.</p>
       </div>
-      <a class="back-link" href="./TaoSuKien.html">Quay lại quản lý sự kiện</a>
+      <div class="hero-side action-row hero-side-actions">
+        <a class="primary-btn" href="./FormDangKy.html">Đăng ký sự kiện khác</a>
+        <a class="outline-btn light-outline" href="./index.html">Về trang chủ</a>
+      </div>
     </section>
 
     <section class="card">
       <div class="section-header">
         <div>
-          <p class="section-tag">Bước 1</p>
-          <h2>Xác minh người tham gia</h2>
+          <p class="section-kicker">Bước 1</p>
+          <h2 class="section-title">Xác minh người tham gia</h2>
         </div>
       </div>
 
@@ -32,27 +50,27 @@
 
       <form id="access-form" class="stack-form">
         <div class="form-group">
-          <label for="event_id">Chọn sự kiện</label>
+          <label for="event_id">Sự kiện</label>
           <select id="event_id" name="event_id" required>
-            <option value="">-- Chọn sự kiện đã tham gia --</option>
+            <option value="">Chọn sự kiện</option>
           </select>
         </div>
 
         <div id="selected-event-info" class="event-info"></div>
 
-        <div class="grid two-columns">
+        <div class="grid grid-2">
           <div class="form-group">
             <label for="student_id">Mã sinh viên</label>
             <input id="student_id" name="student_id" type="text" placeholder="Ví dụ: SV001" required />
           </div>
           <div class="form-group">
-            <label for="email">Email đã dùng khi đăng ký</label>
+            <label for="email">Email đã đăng ký</label>
             <input id="email" name="email" type="email" placeholder="Ví dụ: sv001@example.com" required />
           </div>
         </div>
 
-        <div class="actions">
-          <button type="submit">Xác minh để mở form feedback</button>
+        <div class="form-actions">
+          <button type="submit" class="primary-btn">Xác minh</button>
         </div>
       </form>
     </section>
@@ -60,15 +78,15 @@
     <section id="feedback-form-section" class="card hidden">
       <div class="section-header">
         <div>
-          <p class="section-tag">Bước 2</p>
-          <h2>Gửi feedback cho sự kiện</h2>
+          <p class="section-kicker">Bước 2</p>
+          <h2 class="section-title">Gửi phản hồi</h2>
           <p id="participant-info" class="section-text"></p>
         </div>
       </div>
 
       <form id="feedback-form" class="stack-form">
         <div class="form-group">
-          <label id="satisfaction-question-label" for="satisfaction_rating">Mức độ hài lòng</label>
+          <label id="satisfaction-question-label" for="satisfaction_rating">Mức độ hài lòng của bạn</label>
           <div class="rating-group" id="rating-group">
             <label><input type="radio" name="satisfaction_rating" value="1" required /> 1</label>
             <label><input type="radio" name="satisfaction_rating" value="2" required /> 2</label>
@@ -76,16 +94,15 @@
             <label><input type="radio" name="satisfaction_rating" value="4" required /> 4</label>
             <label><input type="radio" name="satisfaction_rating" value="5" required /> 5</label>
           </div>
-          <small>1 = Chưa hài lòng, 5 = Rất hài lòng</small>
         </div>
 
         <div class="form-group">
-          <label id="comment-question-label" for="comment">Nội dung góp ý</label>
-          <textarea id="comment" name="comment" rows="5" placeholder="Hãy chia sẻ điều bạn thích hoặc đề xuất cải thiện."></textarea>
+          <label id="comment-question-label" for="comment">Góp ý thêm</label>
+          <textarea id="comment" name="comment" rows="5" placeholder="Chia sẻ điều bạn thích hoặc đề xuất cải thiện"></textarea>
         </div>
 
-        <div class="actions">
-          <button id="submit-feedback-button" type="submit">Gửi feedback</button>
+        <div class="form-actions">
+          <button id="submit-feedback-button" type="submit" class="primary-btn">Gửi feedback</button>
         </div>
       </form>
     </section>
@@ -93,8 +110,8 @@
     <section id="submitted-section" class="card hidden">
       <div class="section-header">
         <div>
-          <p class="section-tag">Trạng thái</p>
-          <h2>Feedback đã được ghi nhận</h2>
+          <p class="section-kicker">Hoàn tất</p>
+          <h2 class="section-title">Feedback đã được ghi nhận</h2>
           <p id="submitted-message" class="section-text"></p>
         </div>
       </div>
@@ -102,6 +119,7 @@
     </section>
   </main>
 
+  <script src="./js/app-config.js"></script>
   <script src="./js/FeedbackSuKien.js"></script>
 </body>
 </html>
