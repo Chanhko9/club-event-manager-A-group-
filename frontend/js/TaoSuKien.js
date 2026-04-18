@@ -440,7 +440,7 @@ function renderEvents(events) {
               Đăng ký tham gia
             </a>
             <a class="register-link secondary-link" href="./DanhSachDangKy.html?eventId=${event.id}">
-              Check-in thủ công
+              Check-in và thống kê
             </a>
             <a class="register-link feedback-link" href="./FeedbackSuKien.html?eventId=${event.id}">
               Form feedback

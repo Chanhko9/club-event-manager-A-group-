@@ -1,6 +1,17 @@
 .registrations-admin-page {
+  width: min(1380px, 100%);
+  margin-inline: auto;
   display: grid;
   gap: 24px;
+}
+
+.page-wrap.registrations-admin-page {
+  width: min(1380px, calc(100% - 40px));
+  margin: 32px auto 56px;
+}
+
+.page-wrap.registrations-admin-page > * {
+  width: 100%;
 }
 
 .compact-stats {
@@ -715,5 +726,11 @@
 
   .registration-table {
     min-width: 700px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .page-wrap.registrations-admin-page {
+    width: min(1480px, calc(100% - 64px));
   }
 }

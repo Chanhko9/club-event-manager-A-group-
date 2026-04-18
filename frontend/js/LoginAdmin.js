@@ -92,12 +92,9 @@ if (loginFormEl) {
 }
 
 checkExistingSession()
-  .then(function (session) {
-    if (session && session.isAuthenticated) {
-      navigateToAppPath(getRedirectTarget());
-    }
+  .catch(function () {
+    return null;
   })
-  .catch(function () {})
   .finally(function () {
     if (identifierEl) {
       identifierEl.focus();

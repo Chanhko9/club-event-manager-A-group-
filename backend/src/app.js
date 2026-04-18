@@ -2596,10 +2596,6 @@ app.get(["/", "/index.html", "/frontend", "/frontend/", "/frontend/index.html"],
 });
 
 app.get(["/LoginAdmin.html", "/frontend/LoginAdmin.html"], (req, res) => {
-  if (req.adminSession?.isAuthenticated) {
-    return res.redirect("/TaoSuKien.html");
-  }
-
   return res.sendFile(path.resolve(frontendDir, "LoginAdmin.html"));
 });
 
